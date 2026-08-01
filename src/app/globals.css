@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-goauto: #4285f4;
+  --color-pusat: #ea4335;
+  --color-hosela: #fbbc04;
+  --color-mobela: #34a853;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background-color: #f8fafc;
+  color: #1e293b;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.4s ease-out;
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(16px) scale(0.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.animate-toast {
+  animation: toast-in 0.3s ease-out;
+}
+
+.meeting-note-editor:empty::before {
+  content: attr(data-placeholder);
+  white-space: pre-line;
+  color: #94a3b8;
+  pointer-events: none;
+}
+
+.meeting-note-editor mark,
+.meeting-note-read mark {
+  border-radius: 4px;
+  padding: 0 4px;
+}

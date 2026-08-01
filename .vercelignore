@@ -1,0 +1,6 @@
+hosela.db
+hosela.db-shm
+hosela.db-wal
+.next
+node_modules
+*.tsbuildinfo
