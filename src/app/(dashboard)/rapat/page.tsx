@@ -130,6 +130,7 @@ export default function RapatPage() {
   const notesRef = useRef<HTMLDivElement | null>(null);
   const [stores, setStores] = useState<Store[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [loadingMeetings, setLoadingMeetings] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey());
   const [showForm, setShowForm] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
@@ -152,10 +153,11 @@ export default function RapatPage() {
   }, []);
 
   useEffect(() => {
+    setLoadingMeetings(true);
     fetch(`/api/meetings?month=${selectedMonth}`)
       .then((r) => r.ok ? r.json() : [])
-      .then((data) => setMeetings(Array.isArray(data) ? data : []))
-      .catch(() => setMeetings([]));
+      .then((data) => { setMeetings(Array.isArray(data) ? data : []); setLoadingMeetings(false); })
+      .catch(() => { setMeetings([]); setLoadingMeetings(false); });
   }, [selectedMonth]);
 
   async function refreshMeetings() {
@@ -599,7 +601,12 @@ export default function RapatPage() {
       </div>
 
       <div className="space-y-2">
-        {meetings.length === 0 ? (
+        {loadingMeetings ? (
+          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
+            <div className="w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin mx-auto mb-2" />
+            <p className="text-gray-400">Memuat data rapat...</p>
+          </div>
+        ) : meetings.length === 0 ? (
           <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
             <NotebookPen className="w-10 h-10 text-gray-300 mx-auto mb-2" />
             <p className="text-gray-400">Belum ada catatan rapat pada bulan ini</p>

@@ -46,6 +46,7 @@ const PRIORITY_CONFIG = {
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [loadingTasks, setLoadingTasks] = useState(true);
   const [stores, setStores] = useState<Store[]>([]);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [showForm, setShowForm] = useState(false);
@@ -65,9 +66,11 @@ export default function TasksPage() {
   });
 
   const loadTasks = useCallback(async () => {
+    setLoadingTasks(true);
     const res = await fetch(`/api/tasks?status=${filterStatus}`);
     const data = res.ok ? await res.json() : [];
     setTasks(Array.isArray(data) ? data : []);
+    setLoadingTasks(false);
   }, [filterStatus]);
 
   useEffect(() => { fetch("/api/stores").then((r) => r.ok ? r.json() : []).then((d) => setStores(Array.isArray(d) ? d : [])).catch(() => setStores([])); }, []);
@@ -244,7 +247,12 @@ export default function TasksPage() {
 
       {/* Task List */}
       <div className="space-y-2">
-        {tasks.length === 0 ? (
+        {loadingTasks ? (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center">
+            <div className="w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin mx-auto mb-2" />
+            <p className="text-gray-400">Memuat tugas...</p>
+          </div>
+        ) : tasks.length === 0 ? (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 text-center text-gray-400">
             Belum ada tugas
           </div>

@@ -47,22 +47,19 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       return NextResponse.json({ error: "Judul dan tanggal rapat wajib diisi" }, { status: 400 });
     }
 
+    const updateParams: (string | number | null)[] = [
+      title, meeting_date, participants || null, agenda || null, notes || null,
+      decisions || null, important_points || null, store_id || null, id,
+    ];
+    const ownerScope = session.role === "owner" ? "" : ` AND created_by = $${updateParams.length + 1}`;
+    if (session.role !== "owner") updateParams.push(session.id);
+
     await pgQuery(`
       UPDATE hn_meetings
       SET title = $1, meeting_date = $2, participants = $3, agenda = $4, notes = $5,
           decisions = $6, important_points = $7, store_id = $8, updated_at = now()
-      WHERE id = $9
-    `, [
-      title,
-      meeting_date,
-      participants || null,
-      agenda || null,
-      notes || null,
-      decisions || null,
-      important_points || null,
-      store_id || null,
-      id,
-    ]);
+      WHERE id = $9${ownerScope}
+    `, updateParams);
 
     return NextResponse.json({ success: true });
   }
@@ -103,22 +100,23 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     return NextResponse.json({ error: "Judul dan tanggal rapat wajib diisi" }, { status: 400 });
   }
 
-  db.prepare(`
-    UPDATE meetings
-    SET title = ?, meeting_date = ?, participants = ?, agenda = ?, notes = ?,
-        decisions = ?, important_points = ?, store_id = ?, updated_at = datetime('now')
-    WHERE id = ?
-  `).run(
-    title,
-    meeting_date,
-    participants || null,
-    agenda || null,
-    notes || null,
-    decisions || null,
-    important_points || null,
-    store_id || null,
-    id,
-  );
+  if (session.role === "owner") {
+    db.prepare(`
+      UPDATE meetings
+      SET title = ?, meeting_date = ?, participants = ?, agenda = ?, notes = ?,
+          decisions = ?, important_points = ?, store_id = ?, updated_at = datetime('now')
+      WHERE id = ?
+    `).run(title, meeting_date, participants || null, agenda || null, notes || null,
+      decisions || null, important_points || null, store_id || null, id);
+  } else {
+    db.prepare(`
+      UPDATE meetings
+      SET title = ?, meeting_date = ?, participants = ?, agenda = ?, notes = ?,
+          decisions = ?, important_points = ?, store_id = ?, updated_at = datetime('now')
+      WHERE id = ? AND created_by = ?
+    `).run(title, meeting_date, participants || null, agenda || null, notes || null,
+      decisions || null, important_points || null, store_id || null, id, session.id);
+  }
 
   return NextResponse.json({ success: true });
 }
@@ -130,13 +128,27 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
   const { id } = await params;
   if (hasPostgres()) {
-    await pgQuery("DELETE FROM hn_meeting_action_items WHERE meeting_id = $1", [id]);
-    await pgQuery("DELETE FROM hn_meetings WHERE id = $1", [id]);
+    if (session.role === "owner") {
+      await pgQuery("DELETE FROM hn_meeting_action_items WHERE meeting_id = $1", [id]);
+      await pgQuery("DELETE FROM hn_meetings WHERE id = $1", [id]);
+    } else {
+      const meeting = await pgQuery("SELECT id FROM hn_meetings WHERE id = $1 AND created_by = $2", [id, session.id]);
+      if (meeting.rows.length === 0) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      await pgQuery("DELETE FROM hn_meeting_action_items WHERE meeting_id = $1", [id]);
+      await pgQuery("DELETE FROM hn_meetings WHERE id = $1 AND created_by = $2", [id, session.id]);
+    }
     return NextResponse.json({ success: true });
   }
 
   const db = getDb();
-  db.prepare("DELETE FROM meeting_action_items WHERE meeting_id = ?").run(id);
-  db.prepare("DELETE FROM meetings WHERE id = ?").run(id);
+  if (session.role === "owner") {
+    db.prepare("DELETE FROM meeting_action_items WHERE meeting_id = ?").run(id);
+    db.prepare("DELETE FROM meetings WHERE id = ?").run(id);
+  } else {
+    const meeting = db.prepare("SELECT id FROM meetings WHERE id = ? AND created_by = ?").get(id, session.id);
+    if (!meeting) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    db.prepare("DELETE FROM meeting_action_items WHERE meeting_id = ?").run(id);
+    db.prepare("DELETE FROM meetings WHERE id = ? AND created_by = ?").run(id, session.id);
+  }
   return NextResponse.json({ success: true });
 }

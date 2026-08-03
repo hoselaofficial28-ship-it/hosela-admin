@@ -49,8 +49,12 @@ export async function GET(req: NextRequest) {
   const month = searchParams.get("month");
 
   if (hasPostgres()) {
-    const params: string[] = [];
+    const params: (string | number)[] = [];
     let where = "WHERE 1=1";
+    if (session.role !== "owner") {
+      params.push(session.id);
+      where += ` AND m.created_by = $${params.length}`;
+    }
     if (month) {
       params.push(month);
       where += ` AND substring(m.meeting_date from 1 for 7) = $${params.length}`;
@@ -96,7 +100,12 @@ export async function GET(req: NextRequest) {
     LEFT JOIN users u ON m.created_by = u.id
     WHERE 1=1
   `;
-  const params: string[] = [];
+  const params: (string | number)[] = [];
+
+  if (session.role !== "owner") {
+    query += " AND m.created_by = ?";
+    params.push(session.id);
+  }
 
   if (month) {
     query += " AND substr(m.meeting_date, 1, 7) = ?";

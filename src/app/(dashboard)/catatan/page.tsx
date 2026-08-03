@@ -64,6 +64,7 @@ function monthInputLabel(monthKey: string) {
 
 export default function CatatanPage() {
   const [notes, setNotes] = useState<Note[]>([]);
+  const [loadingNotes, setLoadingNotes] = useState(true);
   const [summary, setSummary] = useState<SummaryMonth[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>("active");
@@ -90,6 +91,7 @@ export default function CatatanPage() {
   }, []);
 
   useEffect(() => {
+    setLoadingNotes(true);
     const params = new URLSearchParams();
     if (viewMode === "history") {
       params.set("scope", "history");
@@ -100,8 +102,8 @@ export default function CatatanPage() {
 
     fetch(`/api/notes?${params.toString()}`)
       .then((r) => r.ok ? r.json() : [])
-      .then((data) => setNotes(Array.isArray(data) ? data : []))
-      .catch(() => setNotes([]));
+      .then((data) => { setNotes(Array.isArray(data) ? data : []); setLoadingNotes(false); })
+      .catch(() => { setNotes([]); setLoadingNotes(false); });
   }, [filterStatus, selectedMonth, viewMode]);
 
   function refreshNotes() {
@@ -436,7 +438,12 @@ export default function CatatanPage() {
           )}
 
           <div className="space-y-2">
-            {visibleNotes.length === 0 ? (
+            {loadingNotes ? (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
+                <div className="w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin mx-auto mb-2" />
+                <p className="text-gray-400">Memuat catatan...</p>
+              </div>
+            ) : visibleNotes.length === 0 ? (
               <EmptyState text={viewMode === "history" ? "Belum ada catatan selesai pada bulan ini" : "Belum ada catatan"} />
             ) : (
               visibleNotes.map((note) => (
