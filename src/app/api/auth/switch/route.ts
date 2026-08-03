@@ -1,15 +1,33 @@
 import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
-import { getSession, createToken, COOKIE_NAME } from "@/lib/auth";
+import jwt from "jsonwebtoken";
+import { getSession, createToken, COOKIE_NAME, type SessionUser } from "@/lib/auth";
 import { hasPostgres, pgQuery } from "@/lib/pg";
 import { getDb } from "@/lib/db";
 
 const OWNER_COOKIE = "hosela_owner_session";
+const JWT_SECRET = process.env.JWT_SECRET || "hosela-admin-secret-key-2026";
+
+async function verifyOwnerAccess(): Promise<{ session: SessionUser; isImpersonating: boolean } | null> {
+  const session = await getSession();
+  if (!session) return null;
+  if (session.role === "owner") return { session, isImpersonating: false };
+
+  try {
+    const cookieStore = await cookies();
+    const ownerToken = cookieStore.get(OWNER_COOKIE)?.value;
+    if (ownerToken) {
+      const owner = jwt.verify(ownerToken, JWT_SECRET) as SessionUser;
+      if (owner.role === "owner") return { session, isImpersonating: true };
+    }
+  } catch {}
+
+  return null;
+}
 
 export async function GET() {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const access = await verifyOwnerAccess();
+  if (!access) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   if (hasPostgres()) {
     const users = await pgQuery<{ id: number; username: string; name: string; role: string; status: string }>(
@@ -27,9 +45,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getSession();
-  if (!session) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const access = await verifyOwnerAccess();
+  if (!access) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const { user_id } = await req.json() as { user_id: number };
   if (!user_id) return NextResponse.json({ error: "user_id wajib diisi" }, { status: 400 });
@@ -65,10 +82,30 @@ export async function POST(req: NextRequest) {
   }
 
   const cookieStore = await cookies();
-  const currentToken = cookieStore.get(COOKIE_NAME)?.value;
+  const ownerToken = cookieStore.get(OWNER_COOKIE)?.value;
 
-  if (!cookieStore.get(OWNER_COOKIE)?.value && currentToken) {
-    cookieStore.set(OWNER_COOKIE, currentToken, {
+  if (targetUser.role === "owner" && ownerToken) {
+    cookieStore.set(COOKIE_NAME, ownerToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+    });
+    cookieStore.delete(OWNER_COOKIE);
+  } else {
+    const currentToken = cookieStore.get(COOKIE_NAME)?.value;
+    if (!ownerToken && currentToken) {
+      cookieStore.set(OWNER_COOKIE, currentToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7,
+      });
+    }
+    const newToken = createToken(targetUser);
+    cookieStore.set(COOKIE_NAME, newToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
@@ -76,15 +113,6 @@ export async function POST(req: NextRequest) {
       maxAge: 60 * 60 * 24 * 7,
     });
   }
-
-  const newToken = createToken(targetUser);
-  cookieStore.set(COOKIE_NAME, newToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 60 * 60 * 24 * 7,
-  });
 
   return NextResponse.json({ success: true, user: { id: targetUser.id, name: targetUser.name, role: targetUser.role } });
 }
