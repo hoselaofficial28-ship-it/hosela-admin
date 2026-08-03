@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3, ClipboardEdit, History, LogOut, Menu, X,
   ListTodo, Settings, Bell, StickyNote, NotebookPen, UsersRound,
+  ArrowLeftRight, ChevronDown, Shield,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { hasPermission, type FeatureKey } from "@/lib/permissions";
@@ -48,8 +49,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotif, setShowNotif] = useState(false);
   const [notifications, setNotifications] = useState<{ id: number; title: string; message: string; read: number; created_at: string }[]>([]);
+  const [switchedFrom, setSwitchedFrom] = useState<{ name: string; id: number } | null>(null);
+  const [showSwitcher, setShowSwitcher] = useState(false);
+  const [switchUsers, setSwitchUsers] = useState<{ id: number; name: string; role: string; username: string }[]>([]);
+  const [userId, setUserId] = useState(0);
+  const [switching, setSwitching] = useState(false);
 
-  useEffect(() => {
+  const loadSession = useCallback(() => {
     fetch("/api/auth/me")
       .then((r) => {
         if (!r.ok) {
@@ -59,15 +65,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         return r.json();
       })
       .then((d) => {
-        if (d.user) {
+        if (d?.user) {
           setUserName(d.user.name);
           setUserRole(d.user.role);
+          setUserId(d.user.id);
           setUserPermissions(d.user.permissions || []);
+          setSwitchedFrom(d.switchedFrom || null);
         }
       })
       .catch(() => router.replace("/login"))
       .finally(() => setSessionLoaded(true));
   }, [router]);
+
+  useEffect(() => {
+    loadSession();
+  }, [loadSession]);
 
   useEffect(() => {
     const today = new Date();
@@ -139,6 +151,31 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     router.refresh();
   }
 
+  function openSwitcher() {
+    if (switchUsers.length === 0) {
+      fetch("/api/auth/switch").then((r) => r.ok ? r.json() : []).then((data) => {
+        setSwitchUsers(Array.isArray(data) ? data : []);
+        setShowSwitcher(true);
+      });
+    } else {
+      setShowSwitcher(!showSwitcher);
+    }
+  }
+
+  async function switchToUser(targetId: number) {
+    if (targetId === userId) { setShowSwitcher(false); return; }
+    setSwitching(true);
+    await fetch("/api/auth/switch", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: targetId }),
+    });
+    setSwitching(false);
+    setShowSwitcher(false);
+    loadSession();
+    router.refresh();
+  }
+
   return (
     <div className="h-full flex">
       {/* Desktop Sidebar */}
@@ -176,13 +213,48 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           })}
         </nav>
 
-        <div className="px-3 py-4 border-t border-gray-100">
-          <div className="flex items-center gap-3 px-3 mb-3">
-            <div className="w-8 h-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium text-gray-600">
+        <div className="px-3 py-4 border-t border-gray-100 relative">
+          <button onClick={(userRole === "owner" || switchedFrom) ? openSwitcher : undefined}
+            className="flex items-center gap-3 px-3 mb-3 w-full text-left hover:bg-gray-50 rounded-lg py-1.5 transition"
+          >
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${switchedFrom ? "bg-amber-100 text-amber-700" : "bg-gray-200 text-gray-600"}`}>
               {userName.charAt(0).toUpperCase() || "U"}
             </div>
-            <span className="text-sm text-gray-700 truncate">{userName || "User"}</span>
-          </div>
+            <div className="flex-1 min-w-0">
+              <span className="text-sm text-gray-700 truncate block">{userName || "User"}</span>
+              {switchedFrom && <span className="text-[10px] text-amber-600">via {switchedFrom.name}</span>}
+            </div>
+            {(userRole === "owner" || switchedFrom) && <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />}
+          </button>
+
+          {showSwitcher && (
+            <div className="absolute bottom-full left-3 right-3 mb-1 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden z-50 animate-fade-in">
+              <div className="px-3 py-2 border-b border-gray-100 flex items-center gap-2">
+                <ArrowLeftRight className="w-3.5 h-3.5 text-gray-400" />
+                <span className="text-xs font-semibold text-gray-500">Pindah Akun</span>
+              </div>
+              <div className="max-h-48 overflow-y-auto">
+                {switchUsers.map((u) => (
+                  <button
+                    key={u.id}
+                    onClick={() => switchToUser(u.id)}
+                    disabled={switching}
+                    className={`flex items-center gap-3 px-3 py-2.5 w-full text-left hover:bg-gray-50 transition ${u.id === userId ? "bg-blue-50" : ""}`}
+                  >
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-medium ${u.id === userId ? "bg-blue-200 text-blue-700" : "bg-gray-200 text-gray-600"}`}>
+                      {u.name.charAt(0).toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm text-gray-900 truncate">{u.name}</div>
+                      <div className="text-[10px] text-gray-400">{u.role === "owner" ? "Owner" : u.username}</div>
+                    </div>
+                    {u.id === userId && <span className="text-[10px] font-medium text-blue-600 bg-blue-100 px-1.5 py-0.5 rounded-full">Aktif</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <button
             onClick={handleLogout}
             className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-red-50 hover:text-red-600 w-full transition"
@@ -226,6 +298,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               })}
             </nav>
             <div className="absolute bottom-0 left-0 right-0 px-3 py-4 border-t border-gray-100">
+              {(userRole === "owner" || switchedFrom) && (
+                <button
+                  onClick={openSwitcher}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 w-full mb-1 transition"
+                >
+                  <ArrowLeftRight className="w-5 h-5" />
+                  Pindah Akun
+                </button>
+              )}
               <button onClick={handleLogout} className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-red-600 w-full">
                 <LogOut className="w-5 h-5" />
                 Keluar
@@ -234,6 +315,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </aside>
         </div>
       )}
+
+      {/* Account Switcher Overlay (click outside to close) */}
+      {showSwitcher && <div className="fixed inset-0 z-40" onClick={() => setShowSwitcher(false)} />}
 
       {/* Notification Panel */}
       {showNotif && (
@@ -279,6 +363,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             )}
           </button>
         </header>
+
+        {switchedFrom && (
+          <div className="bg-amber-50 border-b border-amber-200 px-4 py-2 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs text-amber-800">
+              <Shield className="w-3.5 h-3.5" />
+              <span>Melihat sebagai <strong>{userName}</strong></span>
+            </div>
+            <button
+              onClick={() => switchToUser(switchedFrom.id)}
+              className="text-xs font-medium text-amber-700 hover:text-amber-900 bg-amber-200/60 px-2 py-1 rounded-md transition"
+            >
+              Kembali ke {switchedFrom.name}
+            </button>
+          </div>
+        )}
 
         <main className="flex-1 overflow-auto">
           {children}
