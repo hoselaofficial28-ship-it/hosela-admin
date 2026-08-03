@@ -104,49 +104,33 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    fetch("/api/stores")
-      .then((r) => {
-        if (!r.ok) throw new Error("stores");
-        return r.json();
-      })
-      .then(setStores)
-      .catch(() => {
-        setStores([]);
-        setLoading(false);
-        setError("Sesi kamu belum valid. Silakan login ulang.");
-      });
-  }, []);
-
-  useEffect(() => {
-    if (stores.length === 0) return;
-
     const range = period === "custom"
       ? { start: customStart, end: customEnd, prevStart: "", prevEnd: "" }
       : getDateRange(period);
 
     if (!range.start || !range.end) {
-      Promise.resolve().then(() => setLoading(false));
+      setLoading(false);
       return;
     }
 
+    setLoading(true);
+    setError("");
+
     const storeParam = selectedStore ? `&store_id=${selectedStore}` : "";
 
-    Promise.resolve()
-      .then(() => {
-        setLoading(true);
-        setError("");
-        return Promise.all([
-          fetch(`/api/shipments?start=${range.start}&end=${range.end}${storeParam}`),
-          fetch(`/api/stats?start=${range.start}&end=${range.end}&prev_start=${range.prevStart}&prev_end=${range.prevEnd}${storeParam}`),
-        ]);
-      })
-      .then(([shipRes, statsRes]) => {
-        if (!shipRes.ok || !statsRes.ok) {
-          throw new Error(shipRes.status === 401 || statsRes.status === 401 ? "unauthorized" : "forbidden");
-        }
-        return Promise.all([shipRes.json(), statsRes.json()]);
-      })
-      .then(([shipData, statsData]) => {
+    Promise.all([
+      fetch("/api/stores").then((r) => r.ok ? r.json() : []),
+      fetch(`/api/shipments?start=${range.start}&end=${range.end}${storeParam}`).then((r) => {
+        if (!r.ok) throw new Error(r.status === 401 ? "unauthorized" : "forbidden");
+        return r.json();
+      }),
+      fetch(`/api/stats?start=${range.start}&end=${range.end}&prev_start=${range.prevStart}&prev_end=${range.prevEnd}${storeParam}`).then((r) => {
+        if (!r.ok) throw new Error(r.status === 401 ? "unauthorized" : "forbidden");
+        return r.json();
+      }),
+    ])
+      .then(([storeData, shipData, statsData]) => {
+        setStores(Array.isArray(storeData) ? storeData : []);
         setShipments(Array.isArray(shipData) ? shipData : []);
         setStats({ ...EMPTY_STATS, ...statsData });
         setLoading(false);
@@ -159,7 +143,7 @@ export default function DashboardPage() {
           : "Akun ini belum punya akses Dashboard.");
         setLoading(false);
       });
-  }, [period, customStart, customEnd, selectedStore, stores.length]);
+  }, [period, customStart, customEnd, selectedStore]);
 
   const chartData = useMemo(() => {
     const dateMap: Record<string, Record<string, number>> = {};

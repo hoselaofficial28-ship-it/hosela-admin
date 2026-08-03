@@ -70,46 +70,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [router]);
 
   useEffect(() => {
+    const today = new Date();
+    const end = today.toISOString().split("T")[0];
+    const startDate = new Date(today);
+    startDate.setDate(startDate.getDate() - 29);
+    const start = startDate.toISOString().split("T")[0];
+
+    Promise.allSettled([
+      fetch("/api/stores"),
+      fetch(`/api/shipments?start=${start}&end=${end}`),
+      fetch(`/api/stats?start=${start}&end=${end}`),
+    ]).catch(() => {});
+  }, []);
+
+  useEffect(() => {
     if (!userRole) return;
 
-    const warmUpRoutes = () => {
-      const today = new Date();
-      const end = today.toISOString().split("T")[0];
-      const startDate = new Date(today);
-      startDate.setDate(startDate.getDate() - 29);
-      const start = startDate.toISOString().split("T")[0];
-      const currentMonth = end.substring(0, 7);
-      const routes = allNavItems
-        .filter((item) => hasPermission(userRole, userPermissions, item.feature))
-        .map((item) => item.href);
+    const routes = allNavItems
+      .filter((item) => hasPermission(userRole, userPermissions, item.feature))
+      .map((item) => item.href);
 
-      for (const href of routes) {
-        router.prefetch(href);
-      }
-
-      const warmUpApiUrls = [
-        "/api/stores",
-        `/api/shipments?start=${start}&end=${end}`,
-        `/api/stats?start=${start}&end=${end}`,
-        "/api/notes/summary",
-        `/api/meetings?month=${currentMonth}`,
-      ];
-
-      if (hasPermission(userRole, userPermissions, "tasks")) {
-        warmUpApiUrls.push("/api/tasks?status=all");
-      }
-
-      Promise.allSettled(warmUpApiUrls.map((url) => fetch(url))).catch(() => {});
-    };
-
-    const idleCallback = window.requestIdleCallback?.(warmUpRoutes) ?? window.setTimeout(warmUpRoutes, 800);
-    return () => {
-      if (typeof idleCallback === "number") {
-        window.clearTimeout(idleCallback);
-      } else {
-        window.cancelIdleCallback?.(idleCallback);
-      }
-    };
+    for (const href of routes) {
+      router.prefetch(href);
+    }
   }, [router, userPermissions, userRole]);
 
   const loadNotifications = useCallback(async () => {
