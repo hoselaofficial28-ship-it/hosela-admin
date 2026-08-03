@@ -335,13 +335,12 @@ export default function RapatPage() {
     }).then(() => refreshMeetings());
   }
 
-  async function handleDelete(id: number) {
-    const res = await fetch(`/api/meetings/${id}`, { method: "DELETE" });
-    if (res.ok) {
-      setDeleting(null);
-      setToast({ message: "Catatan rapat dihapus", type: "success" });
-      refreshMeetings();
-    }
+  function handleDelete(id: number) {
+    setMeetings((prev) => prev.filter((m) => m.id !== id));
+    setDeleting(null);
+    setExpandedId(null);
+    setToast({ message: "Catatan rapat dihapus", type: "success" });
+    fetch(`/api/meetings/${id}`, { method: "DELETE" }).then(() => refreshMeetings());
   }
 
   const stats = useMemo(() => {
