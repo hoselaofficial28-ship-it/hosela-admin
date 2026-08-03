@@ -226,6 +226,7 @@ async function initializePostgres() {
       due_date TEXT,
       status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'in_progress', 'completed')),
       task_id INTEGER REFERENCES hn_tasks(id),
+      note_id INTEGER REFERENCES hn_admin_notes(id),
       created_at TIMESTAMPTZ DEFAULT now(),
       completed_at TEXT
     );
@@ -241,6 +242,13 @@ async function initializePostgres() {
     CREATE INDEX IF NOT EXISTS hn_idx_meetings_date ON hn_meetings(meeting_date);
     CREATE INDEX IF NOT EXISTS hn_idx_users_status ON hn_users(status);
   `);
+
+  const actionCols = await pool.query(
+    `SELECT column_name FROM information_schema.columns WHERE table_name = 'hn_meeting_action_items' AND column_name = 'note_id'`
+  );
+  if (actionCols.rows.length === 0) {
+    await pool.query(`ALTER TABLE hn_meeting_action_items ADD COLUMN note_id INTEGER REFERENCES hn_admin_notes(id)`);
+  }
 
   const stores = await pool.query<{ count: string }>("SELECT COUNT(*) as count FROM hn_stores");
   if (Number(stores.rows[0]?.count || 0) === 0) {

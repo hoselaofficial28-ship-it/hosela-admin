@@ -13,6 +13,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   if (hasPostgres()) {
     if (body.action_id && body.status) {
+      const actionRow = await pgQuery<{ note_id: number | null }>(`
+        SELECT note_id FROM hn_meeting_action_items WHERE id = $1 AND meeting_id = $2
+      `, [body.action_id, id]);
+
       await pgQuery(`
         UPDATE hn_meeting_action_items
         SET status = $1,
@@ -27,6 +31,16 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
               completed_at = CASE WHEN $2 = 'completed' THEN now()::text ELSE completed_at END
           WHERE id = $3
         `, [body.status, body.status, body.task_id]);
+      }
+
+      const noteId = actionRow.rows[0]?.note_id;
+      if (noteId) {
+        await pgQuery(`
+          UPDATE hn_admin_notes
+          SET status = $1, updated_at = now(),
+              completed_at = CASE WHEN $2 = 'completed' THEN now()::text ELSE completed_at END
+          WHERE id = $3
+        `, [body.status, body.status, noteId]);
       }
 
       return NextResponse.json({ success: true });
@@ -66,6 +80,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const db = getDb();
   if (body.action_id && body.status) {
+    const actionRow = db.prepare(`
+      SELECT note_id FROM meeting_action_items WHERE id = ? AND meeting_id = ?
+    `).get(body.action_id, id) as { note_id: number | null } | undefined;
+
     db.prepare(`
       UPDATE meeting_action_items
       SET status = ?,
@@ -80,6 +98,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
             completed_at = CASE WHEN ? = 'completed' THEN datetime('now') ELSE completed_at END
         WHERE id = ?
       `).run(body.status, body.status, body.task_id);
+    }
+
+    if (actionRow?.note_id) {
+      db.prepare(`
+        UPDATE admin_notes
+        SET status = ?, updated_at = datetime('now'),
+            completed_at = CASE WHEN ? = 'completed' THEN datetime('now') ELSE completed_at END
+        WHERE id = ?
+      `).run(body.status, body.status, actionRow.note_id);
     }
 
     return NextResponse.json({ success: true });

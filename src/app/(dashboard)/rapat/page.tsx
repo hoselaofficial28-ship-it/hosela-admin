@@ -17,6 +17,7 @@ interface MeetingAction {
   due_date: string | null;
   status: "pending" | "in_progress" | "completed";
   task_id: number | null;
+  note_id: number | null;
 }
 
 interface Meeting {
@@ -318,14 +319,20 @@ export default function RapatPage() {
     }
   }
 
-  async function updateActionStatus(meetingId: number, action: MeetingAction) {
+  function updateActionStatus(meetingId: number, action: MeetingAction) {
     const next = action.status === "completed" ? "pending" : "completed";
-    await fetch(`/api/meetings/${meetingId}`, {
+    setMeetings((prev) =>
+      prev.map((m) =>
+        m.id === meetingId
+          ? { ...m, action_items: m.action_items.map((a) => a.id === action.id ? { ...a, status: next } : a) }
+          : m
+      )
+    );
+    fetch(`/api/meetings/${meetingId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action_id: action.id, task_id: action.task_id, status: next }),
-    });
-    refreshMeetings();
+    }).then(() => refreshMeetings());
   }
 
   async function handleDelete(id: number) {

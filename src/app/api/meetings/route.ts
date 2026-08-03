@@ -21,6 +21,7 @@ interface ActionRow {
   due_date: string | null;
   status: "pending" | "in_progress" | "completed";
   task_id: number | null;
+  note_id: number | null;
 }
 
 interface MeetingRow {
@@ -76,7 +77,7 @@ export async function GET(req: NextRequest) {
     if (meetings.rows.length === 0) return NextResponse.json([]);
 
     const actions = await pgQuery<ActionRow>(`
-      SELECT id, meeting_id, title, assigned_to, due_date, status, task_id
+      SELECT id, meeting_id, title, assigned_to, due_date, status, task_id, note_id
       FROM hn_meeting_action_items
       WHERE meeting_id = ANY($1::int[])
       ORDER BY status ASC, due_date ASC NULLS LAST, id ASC
@@ -116,7 +117,7 @@ export async function GET(req: NextRequest) {
 
   const meetings = db.prepare(query).all(...params) as MeetingRow[];
   const actions = db.prepare(`
-    SELECT id, meeting_id, title, assigned_to, due_date, status, task_id
+    SELECT id, meeting_id, title, assigned_to, due_date, status, task_id, note_id
     FROM meeting_action_items
     WHERE meeting_id IN (${meetings.map(() => "?").join(",") || "NULL"})
     ORDER BY status ASC, due_date ASC NULLS LAST, id ASC
@@ -195,10 +196,12 @@ export async function POST(req: NextRequest) {
           taskId = task.rows[0].id;
         }
 
+        let noteId: number | null = null;
         if (item.create_note) {
-          await client.query(`
+          const note = await client.query<{ id: number }>(`
             INSERT INTO hn_admin_notes (user_id, title, description, priority, due_date, store_id)
             VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id
           `, [
             session.id,
             actionTitle,
@@ -207,12 +210,13 @@ export async function POST(req: NextRequest) {
             item.due_date || null,
             store_id || null,
           ]);
+          noteId = note.rows[0].id;
         }
 
         await client.query(`
-          INSERT INTO hn_meeting_action_items (meeting_id, title, assigned_to, due_date, task_id)
-          VALUES ($1, $2, $3, $4, $5)
-        `, [id, actionTitle, item.assigned_to || null, item.due_date || null, taskId]);
+          INSERT INTO hn_meeting_action_items (meeting_id, title, assigned_to, due_date, task_id, note_id)
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [id, actionTitle, item.assigned_to || null, item.due_date || null, taskId, noteId]);
       }
 
       return id;
@@ -230,8 +234,8 @@ export async function POST(req: NextRequest) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const insertAction = db.prepare(`
-    INSERT INTO meeting_action_items (meeting_id, title, assigned_to, due_date, task_id)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO meeting_action_items (meeting_id, title, assigned_to, due_date, task_id, note_id)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
   const insertTask = db.prepare(`
     INSERT INTO tasks (title, description, assigned_to, priority, deadline, store_id, created_by)
@@ -274,8 +278,9 @@ export async function POST(req: NextRequest) {
         taskId = Number(task.lastInsertRowid);
       }
 
+      let noteId: number | null = null;
       if (item.create_note) {
-        insertNote.run(
+        const noteResult = insertNote.run(
           session.id,
           actionTitle,
           item.description || `Dari rapat: ${title}`,
@@ -283,9 +288,10 @@ export async function POST(req: NextRequest) {
           item.due_date || null,
           store_id || null,
         );
+        noteId = Number(noteResult.lastInsertRowid);
       }
 
-      insertAction.run(meetingId, actionTitle, item.assigned_to || null, item.due_date || null, taskId);
+      insertAction.run(meetingId, actionTitle, item.assigned_to || null, item.due_date || null, taskId, noteId);
     }
 
     return meetingId;

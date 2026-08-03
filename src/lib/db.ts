@@ -269,6 +269,13 @@ function migrateDatabase(db: Database.Database) {
     SET morning_quantity = quantity
     WHERE quantity > 0 AND morning_quantity = 0 AND afternoon_quantity = 0
   `).run();
+
+  const actionColumns = db.prepare("PRAGMA table_info(meeting_action_items)").all() as { name: string }[];
+  const actionColumnNames = new Set(actionColumns.map((column) => column.name));
+
+  if (!actionColumnNames.has("note_id")) {
+    db.exec("ALTER TABLE meeting_action_items ADD COLUMN note_id INTEGER REFERENCES admin_notes(id)");
+  }
 }
 
 function seedUserPermissions(db: Database.Database) {

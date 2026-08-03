@@ -21,6 +21,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         completed_at = CASE WHEN $2 = 'completed' THEN now()::text ELSE completed_at END
         WHERE id = $3 ${ownerScope}
       `, params);
+
+      await pgQuery(`
+        UPDATE hn_meeting_action_items SET status = $1,
+        completed_at = CASE WHEN $2 = 'completed' THEN now()::text ELSE completed_at END
+        WHERE note_id = $3
+      `, [body.status, body.status, id]);
+
       return NextResponse.json({ success: true });
     }
 
@@ -44,6 +51,13 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       completed_at = CASE WHEN ? = 'completed' THEN datetime('now') ELSE completed_at END
       WHERE id = ? AND user_id = ?
     `).run(body.status, body.status, id, session.id);
+
+    db.prepare(`
+      UPDATE meeting_action_items SET status = ?,
+      completed_at = CASE WHEN ? = 'completed' THEN datetime('now') ELSE completed_at END
+      WHERE note_id = ?
+    `).run(body.status, body.status, id);
+
     return NextResponse.json({ success: true });
   }
 
