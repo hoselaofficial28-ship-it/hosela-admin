@@ -65,6 +65,19 @@ function initializeDatabase(db: Database.Database) {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS order_peak_times (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      date TEXT NOT NULL,
+      store_id INTEGER NOT NULL REFERENCES stores(id),
+      start_time TEXT NOT NULL,
+      end_time TEXT NOT NULL,
+      order_count INTEGER NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_by TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS price_changes (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       date TEXT NOT NULL,
@@ -187,6 +200,9 @@ function initializeDatabase(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_shipments_date ON daily_shipments(date);
     CREATE INDEX IF NOT EXISTS idx_shipments_store ON daily_shipments(store_id);
+    CREATE INDEX IF NOT EXISTS idx_express_shipments_date ON express_shipments(start_date, end_date);
+    CREATE INDEX IF NOT EXISTS idx_order_peak_times_date ON order_peak_times(date);
+    CREATE INDEX IF NOT EXISTS idx_order_peak_times_store ON order_peak_times(store_id);
     CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
     CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline);
     CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id, read);

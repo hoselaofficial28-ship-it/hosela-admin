@@ -74,16 +74,27 @@ export default function CatatanPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [loadingNotes, setLoadingNotes] = useState(true);
+  const [loadingSummary, setLoadingSummary] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [form, setForm] = useState({
     title: "", description: "", priority: "normal", due_date: "", store_id: "",
   });
 
   useEffect(() => {
     fetch("/api/stores").then((r) => r.ok ? r.json() : []).then(setStores).catch(() => setStores([]));
-    fetch("/api/notes/summary").then((r) => r.ok ? r.json() : []).then((data) => setSummary(Array.isArray(data) ? data : [])).catch(() => setSummary([]));
+    fetch("/api/notes/summary")
+      .then((r) => {
+        if (!r.ok) throw new Error("Gagal memuat rekap catatan");
+        return r.json();
+      })
+      .then((data) => setSummary(Array.isArray(data) ? data : []))
+      .catch(() => setLoadError("Sebagian data belum berhasil dimuat. Coba refresh ulang."))
+      .finally(() => setLoadingSummary(false));
   }, []);
 
   useEffect(() => {
+    const controller = new AbortController();
     const params = new URLSearchParams();
     if (viewMode === "history") {
       params.set("scope", "history");
@@ -92,10 +103,22 @@ export default function CatatanPage() {
       params.set("status", filterStatus);
     }
 
-    fetch(`/api/notes?${params.toString()}`)
-      .then((r) => r.ok ? r.json() : [])
+    fetch(`/api/notes?${params.toString()}`, { signal: controller.signal })
+      .then((r) => {
+        if (!r.ok) throw new Error("Gagal memuat catatan");
+        return r.json();
+      })
       .then((data) => setNotes(Array.isArray(data) ? data : []))
-      .catch(() => setNotes([]));
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          setLoadError("Catatan belum berhasil dimuat. Data lama tetap ditahan supaya tidak terlihat hilang.");
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setLoadingNotes(false);
+      });
+
+    return () => controller.abort();
   }, [filterStatus, selectedMonth, viewMode]);
 
   async function refreshNotes() {
@@ -107,14 +130,25 @@ export default function CatatanPage() {
       params.set("status", filterStatus);
     }
 
-    const [noteRes, summaryRes] = await Promise.all([
-      fetch(`/api/notes?${params.toString()}`),
-      fetch("/api/notes/summary"),
-    ]);
-    const noteData = noteRes.ok ? await noteRes.json() : [];
-    const summaryData = summaryRes.ok ? await summaryRes.json() : [];
-    setNotes(Array.isArray(noteData) ? noteData : []);
-    setSummary(Array.isArray(summaryData) ? summaryData : []);
+    setLoadingNotes(true);
+    setLoadingSummary(true);
+    setLoadError(null);
+    try {
+      const [noteRes, summaryRes] = await Promise.all([
+        fetch(`/api/notes?${params.toString()}`),
+        fetch("/api/notes/summary"),
+      ]);
+      if (!noteRes.ok || !summaryRes.ok) throw new Error("Gagal memuat ulang catatan");
+      const noteData = await noteRes.json();
+      const summaryData = await summaryRes.json();
+      setNotes(Array.isArray(noteData) ? noteData : []);
+      setSummary(Array.isArray(summaryData) ? summaryData : []);
+    } catch {
+      setLoadError("Gagal memuat ulang catatan. Coba lagi sebentar.");
+    } finally {
+      setLoadingNotes(false);
+      setLoadingSummary(false);
+    }
   }
 
   function resetForm() {
@@ -231,6 +265,15 @@ export default function CatatanPage() {
         })}
       </div>
 
+      {loadError && (
+        <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-4 py-3 text-sm flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+          <span>{loadError}</span>
+          <button onClick={refreshNotes} className="self-start md:self-auto px-3 py-1.5 bg-white border border-amber-200 rounded-md text-xs font-semibold hover:bg-amber-100 transition">
+            Coba Lagi
+          </button>
+        </div>
+      )}
+
       {showForm && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 animate-slide-up">
           <h3 className="font-semibold text-gray-900 mb-4">{editNote ? "Edit Catatan" : "Catatan Baru"}</h3>
@@ -301,7 +344,9 @@ export default function CatatanPage() {
 
       {viewMode === "recap" ? (
         <div className="space-y-3">
-          {summary.length === 0 ? (
+          {loadingSummary ? (
+            <EmptyState text="Memuat rekap catatan..." />
+          ) : summary.length === 0 ? (
             <EmptyState text="Belum ada data rekap" />
           ) : (
             summary.map((month) => (
@@ -380,7 +425,9 @@ export default function CatatanPage() {
           </div>
 
           <div className="space-y-2">
-            {visibleNotes.length === 0 ? (
+            {loadingNotes ? (
+              <EmptyState text="Memuat catatan kerja..." />
+            ) : visibleNotes.length === 0 ? (
               <EmptyState text={viewMode === "history" ? "Belum ada catatan selesai pada bulan ini" : "Belum ada catatan"} />
             ) : (
               visibleNotes.map((note) => (

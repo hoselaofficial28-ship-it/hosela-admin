@@ -8,6 +8,9 @@ interface ActionInput {
   assigned_to?: string;
   due_date?: string;
   create_task?: boolean;
+  create_note?: boolean;
+  priority?: "low" | "normal" | "high";
+  description?: string;
 }
 
 interface ActionRow {
@@ -183,6 +186,20 @@ export async function POST(req: NextRequest) {
           taskId = task.rows[0].id;
         }
 
+        if (item.create_note) {
+          await client.query(`
+            INSERT INTO hn_admin_notes (user_id, title, description, priority, due_date, store_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
+          `, [
+            session.id,
+            actionTitle,
+            item.description || `Dari rapat: ${title}`,
+            item.priority || "normal",
+            item.due_date || null,
+            store_id || null,
+          ]);
+        }
+
         await client.query(`
           INSERT INTO hn_meeting_action_items (meeting_id, title, assigned_to, due_date, task_id)
           VALUES ($1, $2, $3, $4, $5)
@@ -210,6 +227,10 @@ export async function POST(req: NextRequest) {
   const insertTask = db.prepare(`
     INSERT INTO tasks (title, description, assigned_to, priority, deadline, store_id, created_by)
     VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+  const insertNote = db.prepare(`
+    INSERT INTO admin_notes (user_id, title, description, priority, due_date, store_id)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
 
   const saveMeeting = db.transaction(() => {
@@ -242,6 +263,17 @@ export async function POST(req: NextRequest) {
           session.username,
         );
         taskId = Number(task.lastInsertRowid);
+      }
+
+      if (item.create_note) {
+        insertNote.run(
+          session.id,
+          actionTitle,
+          item.description || `Dari rapat: ${title}`,
+          item.priority || "normal",
+          item.due_date || null,
+          store_id || null,
+        );
       }
 
       insertAction.run(meetingId, actionTitle, item.assigned_to || null, item.due_date || null, taskId);

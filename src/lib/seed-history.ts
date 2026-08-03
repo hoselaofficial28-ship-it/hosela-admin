@@ -1,6 +1,6 @@
 import { getDb } from "./db";
 
-const historicalData: Record<string, Record<string, number[]>> = {
+export const historicalData: Record<string, Record<string, number[]>> = {
   "2026-03": {
     // Days 5-18, 24-31 (some gaps). GO AUTO total=250, Pusat=355, Hosela=389, Mobela=314
     goauto:  [0,0,0,0, 12,10,14,8,11,15,13,10,12,14,11,13,10,12, 0,0,0,0,0, 10,14,12,11,15,13,10],

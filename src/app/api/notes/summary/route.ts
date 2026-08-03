@@ -63,7 +63,7 @@ export async function GET() {
       FROM hn_admin_notes n
       LEFT JOIN hn_stores s ON n.store_id = s.id
       ${pgOwnerClause}
-      GROUP BY month_key, name
+      GROUP BY month_key, s.short_name
       ORDER BY total DESC
     `, pgParams);
 
@@ -75,7 +75,7 @@ export async function GET() {
       FROM hn_admin_notes n
       LEFT JOIN hn_users u ON n.user_id = u.id
       ${pgOwnerClause}
-      GROUP BY month_key, name
+      GROUP BY month_key, u.name, u.username
       ORDER BY total DESC
     `, pgParams);
 

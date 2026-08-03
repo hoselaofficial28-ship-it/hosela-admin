@@ -1,6 +1,7 @@
 import { Pool, type PoolClient, type QueryResultRow } from "pg";
 import bcrypt from "bcryptjs";
 import { FEATURES, getDefaultPermissions } from "./permissions";
+import { historicalData } from "./seed-history";
 
 const globalForPg = globalThis as unknown as {
   hoselaPgPool?: Pool;
@@ -133,6 +134,19 @@ async function initializePostgres() {
       created_at TIMESTAMPTZ DEFAULT now()
     );
 
+    CREATE TABLE IF NOT EXISTS hn_order_peak_times (
+      id SERIAL PRIMARY KEY,
+      date TEXT NOT NULL,
+      store_id INTEGER NOT NULL REFERENCES hn_stores(id),
+      start_time TEXT NOT NULL,
+      end_time TEXT NOT NULL,
+      order_count INTEGER NOT NULL DEFAULT 0,
+      notes TEXT,
+      created_by TEXT,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      updated_at TIMESTAMPTZ DEFAULT now()
+    );
+
     CREATE TABLE IF NOT EXISTS hn_price_changes (
       id SERIAL PRIMARY KEY,
       date TEXT NOT NULL,
@@ -218,6 +232,9 @@ async function initializePostgres() {
 
     CREATE INDEX IF NOT EXISTS hn_idx_shipments_date ON hn_daily_shipments(date);
     CREATE INDEX IF NOT EXISTS hn_idx_shipments_store ON hn_daily_shipments(store_id);
+    CREATE INDEX IF NOT EXISTS hn_idx_express_shipments_date ON hn_express_shipments(start_date, end_date);
+    CREATE INDEX IF NOT EXISTS hn_idx_order_peak_times_date ON hn_order_peak_times(date);
+    CREATE INDEX IF NOT EXISTS hn_idx_order_peak_times_store ON hn_order_peak_times(store_id);
     CREATE INDEX IF NOT EXISTS hn_idx_tasks_status ON hn_tasks(status);
     CREATE INDEX IF NOT EXISTS hn_idx_notifications_user ON hn_notifications(user_id, read);
     CREATE INDEX IF NOT EXISTS hn_idx_admin_notes_user ON hn_admin_notes(user_id, status);
@@ -236,6 +253,8 @@ async function initializePostgres() {
     `);
   }
 
+  await seedPostgresHistoricalData(pool);
+
   const users = await pool.query<{ count: string }>("SELECT COUNT(*) as count FROM hn_users");
   if (Number(users.rows[0]?.count || 0) === 0) {
     const hash = bcrypt.hashSync("hosela123", 10);
@@ -246,6 +265,58 @@ async function initializePostgres() {
   }
 
   await seedPostgresPermissions();
+}
+
+async function seedPostgresHistoricalData(pool: Pool) {
+  const existing = await pool.query<{ count: string }>("SELECT COUNT(*) as count FROM hn_daily_shipments");
+  if (Number(existing.rows[0]?.count || 0) > 0) return;
+
+  const stores = await pool.query<{ id: number; short_name: string }>(
+    "SELECT id, short_name FROM hn_stores ORDER BY sort_order"
+  );
+  const storeMap: Record<string, number> = {};
+  for (const store of stores.rows) {
+    if (store.short_name === "GO AUTO") storeMap.goauto = store.id;
+    else if (store.short_name === "Pusat Interior") storeMap.pusat = store.id;
+    else if (store.short_name === "Hosela") storeMap.hosela = store.id;
+    else if (store.short_name === "Mobela") storeMap.mobela = store.id;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const [yearMonth, storeData] of Object.entries(historicalData)) {
+      const [year, month] = yearMonth.split("-").map(Number);
+      const daysInMonth = new Date(year, month, 0).getDate();
+
+      for (const [storeKey, quantities] of Object.entries(storeData)) {
+        const storeId = storeMap[storeKey];
+        if (!storeId) continue;
+
+        for (let day = 1; day <= daysInMonth; day++) {
+          const quantity = quantities[day - 1] ?? 0;
+          if (quantity === 0) continue;
+
+          const date = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+          const morning = Math.floor(quantity / 2);
+          const afternoon = quantity - morning;
+          await client.query(`
+            INSERT INTO hn_daily_shipments (
+              date, store_id, morning_quantity, afternoon_quantity, quantity, created_by
+            )
+            VALUES ($1, $2, $3, $4, $5, 'seed')
+            ON CONFLICT(date, store_id) DO NOTHING
+          `, [date, storeId, morning, afternoon, quantity]);
+        }
+      }
+    }
+    await client.query("COMMIT");
+  } catch (error) {
+    await client.query("ROLLBACK");
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 async function seedPostgresPermissions() {

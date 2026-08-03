@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   CalendarDays, CheckCircle, Circle, Highlighter, ListChecks, NotebookPen,
-  Plus, Trash2, UsersRound,
+  Plus, Sparkles, Trash2, UsersRound,
 } from "lucide-react";
 import Toast from "@/components/Toast";
 import { formatDate } from "@/lib/utils";
@@ -38,11 +38,35 @@ interface ActionForm {
   assigned_to: string;
   due_date: string;
   create_task: boolean;
+  create_note: boolean;
+  priority: "low" | "normal" | "high";
+  description: string;
 }
 
 type HighlightColor = "yellow" | "red" | "green";
 
-const emptyAction: ActionForm = { title: "", assigned_to: "", due_date: "", create_task: true };
+interface AiMeetingResult {
+  polished_notes: string;
+  summary: string;
+  important_points: string[];
+  action_items: {
+    title: string;
+    assigned_to?: string | null;
+    due_date?: string | null;
+    priority?: "low" | "normal" | "high";
+    description?: string | null;
+  }[];
+}
+
+const emptyAction: ActionForm = {
+  title: "",
+  assigned_to: "",
+  due_date: "",
+  create_task: false,
+  create_note: true,
+  priority: "normal",
+  description: "",
+};
 const HIGHLIGHT_COLORS: { key: HighlightColor; label: string; className: string; activeClassName: string }[] = [
   { key: "yellow", label: "Kuning", className: "bg-yellow-300 text-yellow-950", activeClassName: "ring-yellow-500" },
   { key: "red", label: "Merah", className: "bg-red-300 text-red-950", activeClassName: "ring-red-500" },
@@ -94,6 +118,14 @@ function renderMeetingNoteHtml(value: string) {
   return legacyHighlightsToHtml(value);
 }
 
+function textToEditorHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/\n/g, "<br>");
+}
+
 export default function RapatPage() {
   const notesRef = useRef<HTMLDivElement | null>(null);
   const [stores, setStores] = useState<Store[]>([]);
@@ -104,6 +136,8 @@ export default function RapatPage() {
   const [deleting, setDeleting] = useState<number | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [highlightColor, setHighlightColor] = useState<HighlightColor>("yellow");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiResult, setAiResult] = useState<AiMeetingResult | null>(null);
   const [form, setForm] = useState({
     title: "",
     meeting_date: todayKey(),
@@ -139,6 +173,7 @@ export default function RapatPage() {
       store_id: "",
     });
     setActionItems([{ ...emptyAction }]);
+    setAiResult(null);
     setShowForm(false);
     if (notesRef.current) notesRef.current.innerHTML = "";
   }
@@ -153,6 +188,64 @@ export default function RapatPage() {
 
   function removeActionItem(index: number) {
     setActionItems((prev) => prev.length === 1 ? [{ ...emptyAction }] : prev.filter((_, itemIndex) => itemIndex !== index));
+  }
+
+  async function handleAiAssist() {
+    const editorHtml = notesRef.current?.innerHTML || form.notes;
+    if (!editorHtml || stripHtml(editorHtml).trim().length < 10) {
+      setToast({ message: "Isi catatan rapat dulu sebelum memakai AI", type: "error" });
+      notesRef.current?.focus();
+      return;
+    }
+
+    setAiLoading(true);
+    setAiResult(null);
+    try {
+      const res = await fetch("/api/ai/meeting-notes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: form.title,
+          meeting_date: form.meeting_date,
+          participants: form.participants,
+          notes: editorHtml,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "AI gagal memproses catatan");
+      setAiResult(data as AiMeetingResult);
+      setToast({ message: "AI selesai merapikan catatan", type: "success" });
+    } catch (error) {
+      setToast({ message: error instanceof Error ? error.message : "AI gagal memproses catatan", type: "error" });
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
+  function applyAiNotes() {
+    if (!aiResult?.polished_notes) return;
+    const html = textToEditorHtml(aiResult.polished_notes);
+    if (notesRef.current) notesRef.current.innerHTML = html;
+    setForm((prev) => ({ ...prev, notes: html }));
+    setToast({ message: "Catatan sudah dirapikan oleh AI", type: "success" });
+  }
+
+  function applyAiActions() {
+    if (!aiResult?.action_items.length) {
+      setToast({ message: "AI tidak menemukan tugas lanjutan yang jelas", type: "error" });
+      return;
+    }
+
+    setActionItems(aiResult.action_items.map((item) => ({
+      title: item.title,
+      assigned_to: item.assigned_to || "",
+      due_date: item.due_date || "",
+      create_task: false,
+      create_note: true,
+      priority: item.priority || "normal",
+      description: item.description || "",
+    })));
+    setToast({ message: "Tugas dari AI sudah masuk daftar review", type: "success" });
   }
 
   function highlightSelection() {
@@ -352,6 +445,16 @@ export default function RapatPage() {
                     <Highlighter className="w-4 h-4" />
                     Stabilo
                   </button>
+                  <button
+                    type="button"
+                    onClick={handleAiAssist}
+                    disabled={aiLoading}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-md hover:bg-blue-700 disabled:opacity-60 disabled:cursor-wait transition"
+                    title="Merapikan catatan, meringkas poin penting, dan mengambil tugas dengan AI"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    {aiLoading ? "AI..." : "Bantu AI"}
+                  </button>
                 </div>
               </div>
               <div
@@ -369,6 +472,52 @@ export default function RapatPage() {
               />
             </div>
 
+            {aiResult && (
+              <div className="border border-blue-100 bg-blue-50 rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-2 text-sm font-semibold text-blue-950">
+                  <Sparkles className="w-4 h-4" />
+                  Hasil Bantuan AI
+                </div>
+                {aiResult.summary && <p className="text-sm text-blue-900 leading-6">{aiResult.summary}</p>}
+                {aiResult.important_points.length > 0 && (
+                  <div>
+                    <div className="text-xs font-semibold text-blue-800 mb-1">Poin penting</div>
+                    <ul className="space-y-1 text-sm text-blue-900">
+                      {aiResult.important_points.map((point, index) => <li key={index}>- {point}</li>)}
+                    </ul>
+                  </div>
+                )}
+                {aiResult.action_items.length > 0 && (
+                  <div>
+                    <div className="text-xs font-semibold text-blue-800 mb-1">Tugas yang terdeteksi</div>
+                    <div className="flex flex-wrap gap-2">
+                      {aiResult.action_items.map((item, index) => (
+                        <span key={index} className="px-2 py-1 bg-white border border-blue-100 rounded-md text-xs text-blue-900">
+                          {item.title}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={applyAiNotes}
+                    className="px-3 py-1.5 bg-white text-blue-700 border border-blue-200 text-xs font-semibold rounded-md hover:bg-blue-100 transition"
+                  >
+                    Pakai Catatan Rapi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyAiActions}
+                    className="px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-md hover:bg-blue-700 transition"
+                  >
+                    Masukkan ke Catatan Kerja
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="border border-gray-100 rounded-lg p-3">
               <div className="flex items-center justify-between mb-3">
                 <div>
@@ -379,7 +528,7 @@ export default function RapatPage() {
               </div>
               <div className="space-y-2">
                 {actionItems.map((item, index) => (
-                  <div key={index} className="grid md:grid-cols-[1fr_150px_150px_88px_32px] gap-2 items-center">
+                  <div key={index} className="grid md:grid-cols-[1fr_130px_130px_118px_96px_32px] gap-2 items-center">
                     <input
                       type="text"
                       value={item.title}
@@ -394,6 +543,15 @@ export default function RapatPage() {
                       className="px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="PIC"
                     />
+                    <select
+                      value={item.priority}
+                      onChange={(e) => updateAction(index, { priority: e.target.value as ActionForm["priority"] })}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    >
+                      <option value="low">Rendah</option>
+                      <option value="normal">Normal</option>
+                      <option value="high">Penting</option>
+                    </select>
                     <input
                       type="date"
                       value={item.due_date}
@@ -403,11 +561,11 @@ export default function RapatPage() {
                     <label className="flex items-center gap-2 text-xs text-gray-600">
                       <input
                         type="checkbox"
-                        checked={item.create_task}
-                        onChange={(e) => updateAction(index, { create_task: e.target.checked })}
+                        checked={item.create_note}
+                        onChange={(e) => updateAction(index, { create_note: e.target.checked })}
                         className="w-4 h-4 rounded border-gray-300"
                       />
-                      Task
+                      Catatan
                     </label>
                     <button type="button" onClick={() => removeActionItem(index)} className="p-2 text-gray-400 hover:text-red-600">
                       <Trash2 className="w-4 h-4" />
