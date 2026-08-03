@@ -61,6 +61,7 @@ export default function TasksPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
   const [allUsers, setAllUsers] = useState<AppUser[]>([]);
   const [userSearch, setUserSearch] = useState("");
   const [showUserDropdown, setShowUserDropdown] = useState(false);
@@ -120,6 +121,8 @@ export default function TasksPage() {
 
   async function handleSave() {
     if (!form.title) { setToast({ message: "Judul tugas wajib diisi", type: "error" }); return; }
+    if (saving) return;
+    setSaving(true);
 
     const body = {
       ...form,
@@ -130,6 +133,7 @@ export default function TasksPage() {
     const method = editTask ? "PUT" : "POST";
 
     const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    setSaving(false);
     if (res.ok) {
       setToast({ message: editTask ? "Tugas diperbarui" : "Tugas berhasil dibuat", type: "success" });
       resetForm();
@@ -270,10 +274,12 @@ export default function TasksPage() {
               </select>
             </div>
             <div className="flex gap-2 pt-1">
-              <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition">
-                {editTask ? "Simpan" : "Buat Tugas"}
+              <button onClick={handleSave} disabled={saving}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 transition disabled:opacity-60 disabled:cursor-not-allowed flex items-center gap-2">
+                {saving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                {saving ? "Menyimpan..." : editTask ? "Simpan" : "Buat Tugas"}
               </button>
-              <button onClick={resetForm} className="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-300 transition">Batal</button>
+              <button onClick={resetForm} disabled={saving} className="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-300 transition disabled:opacity-60">Batal</button>
             </div>
           </div>
         </div>

@@ -20,6 +20,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
           WHERE id = $3
         `, [body.status, body.status, id]);
 
+        await client.query(`
+          UPDATE hn_admin_notes SET status = $1, updated_at = now(),
+          completed_at = CASE WHEN $2 = 'completed' THEN now()::text ELSE completed_at END
+          WHERE task_id = $3
+        `, [body.status, body.status, id]);
+
         if (body.status === "completed") {
           const task = await client.query<{ title: string; assigned_to: string | null; created_by: string | null }>(
             "SELECT title, assigned_to, created_by FROM hn_tasks WHERE id = $1", [id]
@@ -63,6 +69,12 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       UPDATE tasks SET status = ?, updated_at = datetime('now'),
       completed_at = CASE WHEN ? = 'completed' THEN datetime('now') ELSE completed_at END
       WHERE id = ?
+    `).run(body.status, body.status, id);
+
+    db.prepare(`
+      UPDATE admin_notes SET status = ?, updated_at = datetime('now'),
+      completed_at = CASE WHEN ? = 'completed' THEN datetime('now') ELSE completed_at END
+      WHERE task_id = ?
     `).run(body.status, body.status, id);
 
     if (body.status === "completed") {

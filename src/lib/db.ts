@@ -276,6 +276,12 @@ function migrateDatabase(db: Database.Database) {
   if (!actionColumnNames.has("note_id")) {
     db.exec("ALTER TABLE meeting_action_items ADD COLUMN note_id INTEGER REFERENCES admin_notes(id)");
   }
+
+  const noteColumns = db.prepare("PRAGMA table_info(admin_notes)").all() as { name: string }[];
+  const noteColumnNames = new Set(noteColumns.map((column) => column.name));
+  if (!noteColumnNames.has("task_id")) {
+    db.exec("ALTER TABLE admin_notes ADD COLUMN task_id INTEGER REFERENCES tasks(id)");
+  }
 }
 
 function seedUserPermissions(db: Database.Database) {

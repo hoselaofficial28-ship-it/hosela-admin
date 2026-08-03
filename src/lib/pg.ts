@@ -250,6 +250,13 @@ async function initializePostgres() {
     await pool.query(`ALTER TABLE hn_meeting_action_items ADD COLUMN note_id INTEGER REFERENCES hn_admin_notes(id)`);
   }
 
+  const noteTaskCol = await pool.query(
+    `SELECT column_name FROM information_schema.columns WHERE table_name = 'hn_admin_notes' AND column_name = 'task_id'`
+  );
+  if (noteTaskCol.rows.length === 0) {
+    await pool.query(`ALTER TABLE hn_admin_notes ADD COLUMN task_id INTEGER REFERENCES hn_tasks(id) ON DELETE SET NULL`);
+  }
+
   const stores = await pool.query<{ count: string }>("SELECT COUNT(*) as count FROM hn_stores");
   if (Number(stores.rows[0]?.count || 0) === 0) {
     await pool.query(`
