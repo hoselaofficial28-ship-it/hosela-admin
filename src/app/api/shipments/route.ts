@@ -4,6 +4,32 @@ import { canAccessFeature, getSession } from "@/lib/auth";
 import { seedHistoricalData } from "@/lib/seed-history";
 import { hasPostgres, pgQuery, pgTransaction } from "@/lib/pg";
 
+export async function DELETE(req: NextRequest) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+  if (session.role !== "owner") return NextResponse.json({ error: "Hanya owner yang dapat menghapus data riwayat" }, { status: 403 });
+
+  const { date, store_id } = await req.json() as { date: string; store_id?: number };
+  if (!date) return NextResponse.json({ error: "Tanggal wajib diisi" }, { status: 400 });
+
+  if (hasPostgres()) {
+    if (store_id) {
+      await pgQuery("DELETE FROM hn_daily_shipments WHERE date = $1 AND store_id = $2", [date, store_id]);
+    } else {
+      await pgQuery("DELETE FROM hn_daily_shipments WHERE date = $1", [date]);
+    }
+    return NextResponse.json({ success: true });
+  }
+
+  const db = getDb();
+  if (store_id) {
+    db.prepare("DELETE FROM daily_shipments WHERE date = ? AND store_id = ?").run(date, store_id);
+  } else {
+    db.prepare("DELETE FROM daily_shipments WHERE date = ?").run(date);
+  }
+  return NextResponse.json({ success: true });
+}
+
 export async function GET(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });

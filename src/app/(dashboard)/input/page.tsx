@@ -289,9 +289,9 @@ export default function InputPage() {
     }
   }
 
-  async function handleDeletePeak(id: number) {
-    await fetch(`/api/peak-times/${id}`, { method: "DELETE" });
-    refreshPeakRows();
+  function handleDeletePeak(id: number) {
+    setPeakRows((prev) => prev.filter((r) => r.id !== id));
+    fetch(`/api/peak-times/${id}`, { method: "DELETE" }).then(() => refreshPeakRows());
   }
 
   async function handleSaveExpress() {
@@ -323,9 +323,9 @@ export default function InputPage() {
     }
   }
 
-  async function handleDeleteExpress(id: number) {
-    await fetch(`/api/express-shipments/${id}`, { method: "DELETE" });
-    refreshExpressRows();
+  function handleDeleteExpress(id: number) {
+    setExpressRows((prev) => prev.filter((r) => r.id !== id));
+    fetch(`/api/express-shipments/${id}`, { method: "DELETE" }).then(() => refreshExpressRows());
   }
 
   const dayName = new Date(date + "T00:00:00").toLocaleDateString("id-ID", { weekday: "long" });

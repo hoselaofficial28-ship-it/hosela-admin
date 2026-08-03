@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Plus, CheckCircle, Clock, Circle, Trash2, ChevronDown, ChevronUp,
   CalendarDays, StickyNote, Archive, BarChart3, Search, UserRound,
+  CheckSquare, Square, XCircle,
 } from "lucide-react";
 import Toast from "@/components/Toast";
 import { formatDate } from "@/lib/utils";
@@ -74,9 +75,8 @@ export default function CatatanPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
-  const [loadingNotes, setLoadingNotes] = useState(true);
-  const [loadingSummary, setLoadingSummary] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkDeleting, setBulkDeleting] = useState(false);
   const [form, setForm] = useState({
     title: "", description: "", priority: "normal", due_date: "", store_id: "",
   });
@@ -84,17 +84,12 @@ export default function CatatanPage() {
   useEffect(() => {
     fetch("/api/stores").then((r) => r.ok ? r.json() : []).then(setStores).catch(() => setStores([]));
     fetch("/api/notes/summary")
-      .then((r) => {
-        if (!r.ok) throw new Error("Gagal memuat rekap catatan");
-        return r.json();
-      })
+      .then((r) => r.ok ? r.json() : [])
       .then((data) => setSummary(Array.isArray(data) ? data : []))
-      .catch(() => setLoadError("Sebagian data belum berhasil dimuat. Coba refresh ulang."))
-      .finally(() => setLoadingSummary(false));
+      .catch(() => setSummary([]));
   }, []);
 
   useEffect(() => {
-    const controller = new AbortController();
     const params = new URLSearchParams();
     if (viewMode === "history") {
       params.set("scope", "history");
@@ -103,25 +98,13 @@ export default function CatatanPage() {
       params.set("status", filterStatus);
     }
 
-    fetch(`/api/notes?${params.toString()}`, { signal: controller.signal })
-      .then((r) => {
-        if (!r.ok) throw new Error("Gagal memuat catatan");
-        return r.json();
-      })
+    fetch(`/api/notes?${params.toString()}`)
+      .then((r) => r.ok ? r.json() : [])
       .then((data) => setNotes(Array.isArray(data) ? data : []))
-      .catch((error: unknown) => {
-        if (!(error instanceof DOMException && error.name === "AbortError")) {
-          setLoadError("Catatan belum berhasil dimuat. Data lama tetap ditahan supaya tidak terlihat hilang.");
-        }
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoadingNotes(false);
-      });
-
-    return () => controller.abort();
+      .catch(() => setNotes([]));
   }, [filterStatus, selectedMonth, viewMode]);
 
-  async function refreshNotes() {
+  function refreshNotes() {
     const params = new URLSearchParams();
     if (viewMode === "history") {
       params.set("scope", "history");
@@ -130,25 +113,13 @@ export default function CatatanPage() {
       params.set("status", filterStatus);
     }
 
-    setLoadingNotes(true);
-    setLoadingSummary(true);
-    setLoadError(null);
-    try {
-      const [noteRes, summaryRes] = await Promise.all([
-        fetch(`/api/notes?${params.toString()}`),
-        fetch("/api/notes/summary"),
-      ]);
-      if (!noteRes.ok || !summaryRes.ok) throw new Error("Gagal memuat ulang catatan");
-      const noteData = await noteRes.json();
-      const summaryData = await summaryRes.json();
+    Promise.all([
+      fetch(`/api/notes?${params.toString()}`).then((r) => r.ok ? r.json() : []),
+      fetch("/api/notes/summary").then((r) => r.ok ? r.json() : []),
+    ]).then(([noteData, summaryData]) => {
       setNotes(Array.isArray(noteData) ? noteData : []);
       setSummary(Array.isArray(summaryData) ? summaryData : []);
-    } catch {
-      setLoadError("Gagal memuat ulang catatan. Coba lagi sebentar.");
-    } finally {
-      setLoadingNotes(false);
-      setLoadingSummary(false);
-    }
+    }).catch(() => {});
   }
 
   function resetForm() {
@@ -195,16 +166,47 @@ export default function CatatanPage() {
     }
   }
 
-  async function updateStatus(id: number, status: Note["status"]) {
-    await fetch(`/api/notes/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) });
-    refreshNotes();
+  function updateStatus(id: number, status: Note["status"]) {
+    setNotes((prev) => prev.map((n) => n.id === id ? { ...n, status } : n));
+    fetch(`/api/notes/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }) })
+      .then(() => refreshNotes());
   }
 
-  async function handleDelete(id: number) {
-    await fetch(`/api/notes/${id}`, { method: "DELETE" });
+  function handleDelete(id: number) {
+    setNotes((prev) => prev.filter((n) => n.id !== id));
     setDeleting(null);
-    refreshNotes();
     setToast({ message: "Catatan dihapus", type: "success" });
+    fetch(`/api/notes/${id}`, { method: "DELETE" }).then(() => refreshNotes());
+  }
+
+  function toggleSelect(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAll() {
+    setSelectedIds(new Set(visibleNotes.map((n) => n.id)));
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  async function handleBulkDelete() {
+    if (selectedIds.size === 0) return;
+    setBulkDeleting(true);
+    const ids = Array.from(selectedIds);
+
+    setNotes((prev) => prev.filter((n) => !selectedIds.has(n.id)));
+    setSelectedIds(new Set());
+    setToast({ message: `${ids.length} catatan dihapus`, type: "success" });
+
+    await Promise.all(ids.map((id) => fetch(`/api/notes/${id}`, { method: "DELETE" })));
+    refreshNotes();
+    setBulkDeleting(false);
   }
 
   const visibleNotes = useMemo(() => {
@@ -226,6 +228,7 @@ export default function CatatanPage() {
   };
 
   const selectedSummary = summary.find((item) => item.month_key === selectedMonth);
+  const selectionMode = selectedIds.size > 0;
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-4 animate-fade-in">
@@ -253,7 +256,7 @@ export default function CatatanPage() {
           return (
             <button
               key={item.key}
-              onClick={() => setViewMode(item.key as ViewMode)}
+              onClick={() => { setViewMode(item.key as ViewMode); clearSelection(); }}
               className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap transition ${
                 viewMode === item.key ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-100"
               }`}
@@ -264,15 +267,6 @@ export default function CatatanPage() {
           );
         })}
       </div>
-
-      {loadError && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-lg px-4 py-3 text-sm flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-          <span>{loadError}</span>
-          <button onClick={refreshNotes} className="self-start md:self-auto px-3 py-1.5 bg-white border border-amber-200 rounded-md text-xs font-semibold hover:bg-amber-100 transition">
-            Coba Lagi
-          </button>
-        </div>
-      )}
 
       {showForm && (
         <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 animate-slide-up">
@@ -344,9 +338,7 @@ export default function CatatanPage() {
 
       {viewMode === "recap" ? (
         <div className="space-y-3">
-          {loadingSummary ? (
-            <EmptyState text="Memuat rekap catatan..." />
-          ) : summary.length === 0 ? (
+          {summary.length === 0 ? (
             <EmptyState text="Belum ada data rekap" />
           ) : (
             summary.map((month) => (
@@ -424,10 +416,27 @@ export default function CatatanPage() {
             )}
           </div>
 
+          {selectionMode && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-center justify-between animate-slide-up">
+              <span className="text-sm font-medium text-blue-800">{selectedIds.size} catatan dipilih</span>
+              <div className="flex items-center gap-2">
+                <button onClick={selectAll} className="text-xs font-medium text-blue-600 hover:text-blue-700 px-2 py-1">Pilih Semua</button>
+                <button onClick={clearSelection} className="text-xs font-medium text-gray-500 hover:text-gray-700 px-2 py-1 flex items-center gap-1">
+                  <XCircle className="w-3.5 h-3.5" /> Batal
+                </button>
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={bulkDeleting}
+                  className="flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white text-xs font-medium rounded-md hover:bg-red-700 disabled:opacity-50 transition"
+                >
+                  <Trash2 className="w-3.5 h-3.5" /> Hapus {selectedIds.size}
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-2">
-            {loadingNotes ? (
-              <EmptyState text="Memuat catatan kerja..." />
-            ) : visibleNotes.length === 0 ? (
+            {visibleNotes.length === 0 ? (
               <EmptyState text={viewMode === "history" ? "Belum ada catatan selesai pada bulan ini" : "Belum ada catatan"} />
             ) : (
               visibleNotes.map((note) => (
@@ -436,7 +445,10 @@ export default function CatatanPage() {
                   note={note}
                   expanded={expandedId === note.id}
                   deleting={deleting === note.id}
+                  selected={selectedIds.has(note.id)}
+                  selectionMode={selectionMode}
                   onToggleExpand={() => setExpandedId(expandedId === note.id ? null : note.id)}
+                  onToggleSelect={() => toggleSelect(note.id)}
                   onCycleStatus={() => {
                     const next = note.status === "pending" ? "in_progress" : note.status === "in_progress" ? "completed" : "pending";
                     updateStatus(note.id, next);
@@ -462,7 +474,10 @@ function NoteRow({
   note,
   expanded,
   deleting,
+  selected,
+  selectionMode,
   onToggleExpand,
+  onToggleSelect,
   onCycleStatus,
   onComplete,
   onEdit,
@@ -473,7 +488,10 @@ function NoteRow({
   note: Note;
   expanded: boolean;
   deleting: boolean;
+  selected: boolean;
+  selectionMode: boolean;
   onToggleExpand: () => void;
+  onToggleSelect: () => void;
   onCycleStatus: () => void;
   onComplete: () => void;
   onEdit: () => void;
@@ -487,11 +505,25 @@ function NoteRow({
   const overdue = note.status !== "completed" && note.due_date && new Date(note.due_date) < new Date();
 
   return (
-    <div className={`bg-white rounded-lg shadow-sm border transition ${overdue ? "border-red-200" : "border-gray-100"}`}>
-      <div className="flex items-start gap-3 p-4">
-        <button onClick={onCycleStatus} className={`mt-0.5 ${statusCfg.color} hover:scale-110 transition-transform`}>
-          <StatusIcon className="w-5 h-5" />
-        </button>
+    <div className={`bg-white rounded-lg shadow-sm border transition ${selected ? "border-blue-300 bg-blue-50/30" : overdue ? "border-red-200" : "border-gray-100"}`}>
+      <div
+        className="flex items-start gap-3 p-4 cursor-pointer select-none"
+        onClick={(e) => {
+          if ((e.target as HTMLElement).closest("button")) return;
+          if (selectionMode) { onToggleSelect(); return; }
+          onToggleExpand();
+        }}
+        onContextMenu={(e) => { e.preventDefault(); onToggleSelect(); }}
+      >
+        {selectionMode ? (
+          <button onClick={(e) => { e.stopPropagation(); onToggleSelect(); }} className="mt-0.5 text-blue-600 hover:scale-110 transition-transform">
+            {selected ? <CheckSquare className="w-5 h-5" /> : <Square className="w-5 h-5 text-gray-300" />}
+          </button>
+        ) : (
+          <button onClick={(e) => { e.stopPropagation(); onCycleStatus(); }} className={`mt-0.5 ${statusCfg.color} hover:scale-110 transition-transform`}>
+            <StatusIcon className="w-5 h-5" />
+          </button>
+        )}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className={`text-sm font-medium ${note.status === "completed" ? "text-gray-400 line-through" : "text-gray-900"}`}>
@@ -522,9 +554,9 @@ function NoteRow({
             {note.completed_at && <span>Selesai {note.completed_at.substring(0, 10)}</span>}
           </div>
         </div>
-        <button onClick={onToggleExpand} className="p-1 text-gray-300 hover:text-gray-500">
+        <div className="p-1 text-gray-300">
           {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-        </button>
+        </div>
       </div>
 
       {expanded && (
