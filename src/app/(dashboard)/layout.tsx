@@ -163,17 +163,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   async function switchToUser(targetId: number) {
-    if (targetId === userId) { setShowSwitcher(false); return; }
+    if (targetId === userId || switching) return;
     setSwitching(true);
+    setShowSwitcher(false);
     await fetch("/api/auth/switch", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ user_id: targetId }),
     });
-    setSwitching(false);
-    setShowSwitcher(false);
     loadSession();
     router.refresh();
+    setTimeout(() => setSwitching(false), 800);
   }
 
   return (
@@ -319,6 +319,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* Account Switcher Overlay (click outside to close) */}
       {showSwitcher && <div className="fixed inset-0 z-40" onClick={() => setShowSwitcher(false)} />}
 
+      {/* Switching Account Overlay */}
+      {switching && (
+        <div className="fixed inset-0 z-[60] bg-white/80 backdrop-blur-sm flex items-center justify-center">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-8 h-8 border-3 border-blue-200 border-t-blue-600 rounded-full animate-spin" />
+            <p className="text-sm font-medium text-gray-600">Memindahkan akun...</p>
+          </div>
+        </div>
+      )}
+
       {/* Notification Panel */}
       {showNotif && (
         <div className="fixed inset-0 z-50" onClick={() => setShowNotif(false)}>
@@ -372,9 +382,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             </div>
             <button
               onClick={() => switchToUser(switchedFrom.id)}
-              className="text-xs font-medium text-amber-700 hover:text-amber-900 bg-amber-200/60 px-2 py-1 rounded-md transition"
+              disabled={switching}
+              className="text-xs font-medium text-amber-700 hover:text-amber-900 bg-amber-200/60 px-2 py-1 rounded-md transition disabled:opacity-60 flex items-center gap-1.5"
             >
-              Kembali ke {switchedFrom.name}
+              {switching && <span className="w-3 h-3 border-2 border-amber-400 border-t-amber-700 rounded-full animate-spin" />}
+              {switching ? "Memindahkan..." : `Kembali ke ${switchedFrom.name}`}
             </button>
           </div>
         )}
