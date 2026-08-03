@@ -21,13 +21,25 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
         `, [body.status, body.status, id]);
 
         if (body.status === "completed") {
-          const task = await client.query<{ title: string }>("SELECT title FROM hn_tasks WHERE id = $1", [id]);
-          const users = await client.query<{ id: number }>("SELECT id FROM hn_users");
-          for (const user of users.rows) {
-            await client.query(
-              "INSERT INTO hn_notifications (user_id, task_id, title, message) VALUES ($1, $2, $3, $4)",
-              [user.id, id, "Tugas Selesai", `Tugas "${task.rows[0]?.title || "Tugas"}" telah diselesaikan oleh ${session.name}`]
+          const task = await client.query<{ title: string; assigned_to: string | null; created_by: string | null }>(
+            "SELECT title, assigned_to, created_by FROM hn_tasks WHERE id = $1", [id]
+          );
+          const t = task.rows[0];
+          const notifyNames = new Set<string>();
+          if (t?.assigned_to) notifyNames.add(t.assigned_to);
+          if (t?.created_by) notifyNames.add(t.created_by);
+          notifyNames.delete(session.username);
+          if (notifyNames.size > 0) {
+            const targets = await client.query<{ id: number }>(
+              `SELECT id FROM hn_users WHERE (name = ANY($1) OR username = ANY($1)) AND status = 'active'`,
+              [Array.from(notifyNames)]
             );
+            for (const user of targets.rows) {
+              await client.query(
+                "INSERT INTO hn_notifications (user_id, task_id, title, message) VALUES ($1, $2, $3, $4)",
+                [user.id, id, "Tugas Selesai", `Tugas "${t?.title || "Tugas"}" telah diselesaikan oleh ${session.name}`]
+              );
+            }
           }
         }
       });
@@ -54,11 +66,15 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     `).run(body.status, body.status, id);
 
     if (body.status === "completed") {
-      const task = db.prepare("SELECT title FROM tasks WHERE id = ?").get(id) as { title: string };
-      const users = db.prepare("SELECT id FROM users").all() as { id: number }[];
+      const task = db.prepare("SELECT title, assigned_to, created_by FROM tasks WHERE id = ?").get(id) as { title: string; assigned_to: string | null; created_by: string | null };
+      const notifyNames = new Set<string>();
+      if (task.assigned_to) notifyNames.add(task.assigned_to);
+      if (task.created_by) notifyNames.add(task.created_by);
+      notifyNames.delete(session.username);
       const insertNotif = db.prepare("INSERT INTO notifications (user_id, task_id, title, message) VALUES (?, ?, ?, ?)");
-      for (const u of users) {
-        insertNotif.run(u.id, id, "Tugas Selesai", `Tugas "${task.title}" telah diselesaikan oleh ${session.name}`);
+      for (const name of notifyNames) {
+        const target = db.prepare("SELECT id FROM users WHERE (name = ? OR username = ?) AND status = 'active' LIMIT 1").get(name, name) as { id: number } | undefined;
+        if (target) insertNotif.run(target.id, id, "Tugas Selesai", `Tugas "${task.title}" telah diselesaikan oleh ${session.name}`);
       }
     }
 

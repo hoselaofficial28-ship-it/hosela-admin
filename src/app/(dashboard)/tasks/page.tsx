@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Plus, CheckCircle, Clock, AlertCircle, Circle, Trash2,
-  ChevronDown, ChevronUp, Flag, CalendarClock, Bell,
+  ChevronDown, ChevronUp, Flag, CalendarClock, Bell, Search,
 } from "lucide-react";
 import Toast from "@/components/Toast";
 import { formatDate } from "@/lib/utils";
@@ -12,6 +12,13 @@ interface Store {
   id: number;
   short_name: string;
   color: string;
+}
+
+interface AppUser {
+  id: number;
+  name: string;
+  username: string;
+  role: string;
 }
 
 interface Task {
@@ -54,6 +61,10 @@ export default function TasksPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [allUsers, setAllUsers] = useState<AppUser[]>([]);
+  const [userSearch, setUserSearch] = useState("");
+  const [showUserDropdown, setShowUserDropdown] = useState(false);
+  const userDropdownRef = useRef<HTMLDivElement>(null);
 
   const [form, setForm] = useState({
     title: "",
@@ -74,6 +85,15 @@ export default function TasksPage() {
   }, [filterStatus]);
 
   useEffect(() => { fetch("/api/stores").then((r) => r.ok ? r.json() : []).then((d) => setStores(Array.isArray(d) ? d : [])).catch(() => setStores([])); }, []);
+  useEffect(() => { fetch("/api/users/list").then((r) => r.ok ? r.json() : []).then((d) => setAllUsers(Array.isArray(d) ? d : [])).catch(() => setAllUsers([])); }, []);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (userDropdownRef.current && !userDropdownRef.current.contains(e.target as Node)) setShowUserDropdown(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
   useEffect(() => {
     Promise.resolve().then(loadTasks);
   }, [loadTasks]);
@@ -179,10 +199,44 @@ export default function TasksPage() {
                 className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none" placeholder="Detail tugas..." />
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <div>
+              <div ref={userDropdownRef} className="relative">
                 <label className="block text-xs font-medium text-gray-600 mb-1">Ditugaskan Ke</label>
-                <input type="text" value={form.assigned_to} onChange={(e) => setForm({ ...form, assigned_to: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500" placeholder="Nama admin" />
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={showUserDropdown ? userSearch : form.assigned_to}
+                    onChange={(e) => { setUserSearch(e.target.value); setShowUserDropdown(true); }}
+                    onFocus={() => { setUserSearch(""); setShowUserDropdown(true); }}
+                    className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Cari user..."
+                    autoComplete="off"
+                  />
+                </div>
+                {showUserDropdown && (
+                  <div className="absolute z-30 top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-lg border border-gray-200 max-h-48 overflow-y-auto">
+                    {allUsers.filter((u) => u.name.toLowerCase().includes(userSearch.toLowerCase()) || u.username.toLowerCase().includes(userSearch.toLowerCase())).length === 0 ? (
+                      <div className="px-3 py-2 text-xs text-gray-400">Tidak ditemukan</div>
+                    ) : (
+                      allUsers.filter((u) => u.name.toLowerCase().includes(userSearch.toLowerCase()) || u.username.toLowerCase().includes(userSearch.toLowerCase())).map((u) => (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => { setForm({ ...form, assigned_to: u.name }); setShowUserDropdown(false); setUserSearch(""); }}
+                          className={`flex items-center gap-2 px-3 py-2 w-full text-left hover:bg-gray-50 transition ${form.assigned_to === u.name ? "bg-blue-50" : ""}`}
+                        >
+                          <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-medium ${form.assigned_to === u.name ? "bg-blue-200 text-blue-700" : "bg-gray-200 text-gray-600"}`}>
+                            {u.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-sm text-gray-900 truncate">{u.name}</div>
+                            <div className="text-[10px] text-gray-400">{u.role === "owner" ? "Owner" : u.username}</div>
+                          </div>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Prioritas</label>

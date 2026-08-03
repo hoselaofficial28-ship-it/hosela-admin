@@ -72,12 +72,18 @@ export async function POST(req: NextRequest) {
       `, [title, description || null, assigned_to || null, priority || "normal", deadline || null, reminder_at || null, store_id || null, session.username]);
 
       const id = result.rows[0].id;
-      if (deadline) {
-        const users = await client.query<{ id: number }>("SELECT id FROM hn_users");
-        for (const user of users.rows) {
+      if (assigned_to) {
+        const target = await client.query<{ id: number }>(
+          "SELECT id FROM hn_users WHERE name = $1 AND status = 'active' LIMIT 1",
+          [assigned_to]
+        );
+        if (target.rows.length > 0) {
+          const msg = deadline
+            ? `Tugas "${title}" ditugaskan kepada Anda — deadline ${deadline}`
+            : `Tugas "${title}" ditugaskan kepada Anda`;
           await client.query(
             "INSERT INTO hn_notifications (user_id, task_id, title, message) VALUES ($1, $2, $3, $4)",
-            [user.id, id, "Tugas Baru", `Tugas "${title}" telah dibuat dengan deadline ${deadline}`]
+            [target.rows[0].id, id, "Tugas Baru", msg]
           );
         }
       }
@@ -93,11 +99,13 @@ export async function POST(req: NextRequest) {
     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `).run(title, description || null, assigned_to || null, priority || "normal", deadline || null, reminder_at || null, store_id || null, session.username);
 
-  if (deadline) {
-    const users = db.prepare("SELECT id FROM users").all() as { id: number }[];
-    const insertNotif = db.prepare("INSERT INTO notifications (user_id, task_id, title, message) VALUES (?, ?, ?, ?)");
-    for (const u of users) {
-      insertNotif.run(u.id, result.lastInsertRowid, "Tugas Baru", `Tugas "${title}" telah dibuat dengan deadline ${deadline}`);
+  if (assigned_to) {
+    const target = db.prepare("SELECT id FROM users WHERE name = ? AND status = 'active' LIMIT 1").get(assigned_to) as { id: number } | undefined;
+    if (target) {
+      const msg = deadline
+        ? `Tugas "${title}" ditugaskan kepada Anda — deadline ${deadline}`
+        : `Tugas "${title}" ditugaskan kepada Anda`;
+      db.prepare("INSERT INTO notifications (user_id, task_id, title, message) VALUES (?, ?, ?, ?)").run(target.id, result.lastInsertRowid, "Tugas Baru", msg);
     }
   }
 
