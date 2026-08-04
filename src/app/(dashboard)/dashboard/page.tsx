@@ -233,7 +233,20 @@ export default function DashboardPage() {
       </div>
 
       {/* Stat Cards */}
-      {stats && !loading && (
+      {loading ? (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 animate-pulse">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-5 h-5 rounded bg-gray-200" />
+                <div className="h-3 w-24 rounded bg-gray-200" />
+              </div>
+              <div className="h-7 w-16 rounded bg-gray-200 mb-2" />
+              <div className="h-3 w-12 rounded bg-gray-100" />
+            </div>
+          ))}
+        </div>
+      ) : stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <StatCard icon={<Package className="w-5 h-5 text-blue-600" />} label="Total Pengiriman" value={stats.total.toLocaleString("id-ID")} badge={stats.changePercent !== null ? { value: stats.changePercent, type: stats.changePercent >= 0 ? "up" : "down" } : undefined} />
           <StatCard icon={<Calendar className="w-5 h-5 text-purple-600" />} label="Rata-rata / Hari" value={stats.avgPerDay.toLocaleString("id-ID")} subtext="hari aktif" />
@@ -261,7 +274,14 @@ export default function DashboardPage() {
         </div>
 
         {loading ? (
-          <div className="h-64 flex items-center justify-center text-gray-400">Memuat data...</div>
+          <div className="h-72 md:h-80 animate-pulse flex items-end gap-2 px-4 pb-4 pt-8">
+            {Array.from({ length: 14 }).map((_, i) => (
+              <div key={i} className="flex-1 flex gap-0.5 items-end">
+                <div className="flex-1 bg-gray-200 rounded-t" style={{ height: `${20 + Math.random() * 60}%` }} />
+                <div className="flex-1 bg-gray-100 rounded-t" style={{ height: `${20 + Math.random() * 60}%` }} />
+              </div>
+            ))}
+          </div>
         ) : chartData.length === 0 ? (
           <div className="h-64 flex items-center justify-center text-gray-400">Belum ada data untuk periode ini</div>
         ) : (
