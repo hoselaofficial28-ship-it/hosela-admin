@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { canAccessFeature, getSession } from "@/lib/auth";
 import { hasPostgres, pgQuery, pgTransaction } from "@/lib/pg";
+import { sendTaskEmail } from "@/lib/email";
 
 interface ActionInput {
   title: string;
@@ -197,19 +198,28 @@ export async function POST(req: NextRequest) {
         }
 
         let noteId: number | null = null;
+        let targetUserId: number | null = null;
+        let targetEmail: string | null = null;
+
+        if (item.assigned_to) {
+          const target = await client.query<{ id: number; email: string | null }>(
+            "SELECT id, email FROM hn_users WHERE name = $1 AND status = 'active' LIMIT 1",
+            [item.assigned_to]
+          );
+          if (target.rows.length > 0) {
+            targetUserId = target.rows[0].id;
+            targetEmail = target.rows[0].email;
+          }
+        }
+
         if (item.create_note) {
+          const noteUserId = targetUserId || session.id;
+          const noteDesc = item.description || `Dari rapat: ${title}`;
           const note = await client.query<{ id: number }>(`
             INSERT INTO hn_admin_notes (user_id, title, description, priority, due_date, store_id)
             VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING id
-          `, [
-            session.id,
-            actionTitle,
-            item.description || `Dari rapat: ${title}`,
-            item.priority || "normal",
-            item.due_date || null,
-            store_id || null,
-          ]);
+          `, [noteUserId, actionTitle, noteDesc, item.priority || "normal", item.due_date || null, store_id || null]);
           noteId = note.rows[0].id;
         }
 
@@ -217,6 +227,19 @@ export async function POST(req: NextRequest) {
           INSERT INTO hn_meeting_action_items (meeting_id, title, assigned_to, due_date, task_id, note_id)
           VALUES ($1, $2, $3, $4, $5, $6)
         `, [id, actionTitle, item.assigned_to || null, item.due_date || null, taskId, noteId]);
+
+        if (targetUserId && targetUserId !== session.id) {
+          const msg = item.due_date
+            ? `Tugas dari rapat "${title}": ${actionTitle} — deadline ${item.due_date}`
+            : `Tugas dari rapat "${title}": ${actionTitle}`;
+          await client.query(
+            "INSERT INTO hn_notifications (user_id, title, message) VALUES ($1, $2, $3)",
+            [targetUserId, "Tugas dari Rapat", msg]
+          );
+          if (targetEmail) {
+            sendTaskEmail(targetEmail, actionTitle, session.name, item.due_date || undefined, `Dari rapat: ${title}`).catch(() => {});
+          }
+        }
       }
 
       return id;
@@ -279,9 +302,21 @@ export async function POST(req: NextRequest) {
       }
 
       let noteId: number | null = null;
+      let targetUserId: number | null = null;
+      let targetEmail: string | null = null;
+
+      if (item.assigned_to) {
+        const target = db.prepare("SELECT id, email FROM users WHERE name = ? AND status = 'active' LIMIT 1").get(item.assigned_to) as { id: number; email: string | null } | undefined;
+        if (target) {
+          targetUserId = target.id;
+          targetEmail = target.email;
+        }
+      }
+
       if (item.create_note) {
+        const noteUserId = targetUserId || session.id;
         const noteResult = insertNote.run(
-          session.id,
+          noteUserId,
           actionTitle,
           item.description || `Dari rapat: ${title}`,
           item.priority || "normal",
@@ -292,6 +327,16 @@ export async function POST(req: NextRequest) {
       }
 
       insertAction.run(meetingId, actionTitle, item.assigned_to || null, item.due_date || null, taskId, noteId);
+
+      if (targetUserId && targetUserId !== session.id) {
+        const msg = item.due_date
+          ? `Tugas dari rapat "${title}": ${actionTitle} — deadline ${item.due_date}`
+          : `Tugas dari rapat "${title}": ${actionTitle}`;
+        db.prepare("INSERT INTO notifications (user_id, title, message) VALUES (?, ?, ?)").run(targetUserId, "Tugas dari Rapat", msg);
+        if (targetEmail) {
+          sendTaskEmail(targetEmail, actionTitle, session.name, item.due_date || undefined, `Dari rapat: ${title}`).catch(() => {});
+        }
+      }
     }
 
     return meetingId;

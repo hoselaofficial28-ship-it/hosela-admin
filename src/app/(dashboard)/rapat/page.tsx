@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  CalendarDays, CheckCircle, Circle, Highlighter, ListChecks, NotebookPen,
+  BarChart3, CalendarDays, CheckCircle, Circle, Filter, Highlighter, ListChecks, NotebookPen,
   Plus, Sparkles, Trash2, UsersRound,
 } from "lucide-react";
 import Toast from "@/components/Toast";
@@ -11,6 +11,19 @@ import { useSession } from "@/lib/session-context";
 
 interface AppUser { id: number; name: string; username: string; role: string; }
 interface Store { id: number; short_name: string; color: string; }
+
+interface SummaryMonth {
+  month_key: string;
+  label: string;
+  total: number;
+  total_actions: number;
+  completed_actions: number;
+  total_highlights: number;
+  stores: { name: string; total: number }[];
+  users: { name: string; total: number }[];
+}
+
+type ViewMode = "list" | "recap";
 
 interface MeetingAction {
   id: number;
@@ -132,12 +145,16 @@ function textToEditorHtml(value: string) {
 export default function RapatPage() {
   const notesRef = useRef<HTMLDivElement | null>(null);
   const { userRole } = useSession();
+  const isOwner = userRole === "owner";
   const [stores, setStores] = useState<Store[]>([]);
   const [allUsers, setAllUsers] = useState<AppUser[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loadingMeetings, setLoadingMeetings] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey());
   const [showForm, setShowForm] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [filterUser, setFilterUser] = useState("");
+  const [summary, setSummary] = useState<SummaryMonth[]>([]);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -157,6 +174,7 @@ export default function RapatPage() {
   useEffect(() => {
     fetch("/api/stores").then((r) => r.ok ? r.json() : []).then((data) => setStores(Array.isArray(data) ? data : [])).catch(() => setStores([]));
     fetch("/api/users/list").then((r) => r.ok ? r.json() : []).then((data) => setAllUsers(Array.isArray(data) ? data : [])).catch(() => setAllUsers([]));
+    fetch("/api/meetings/summary").then((r) => r.ok ? r.json() : []).then((data) => setSummary(Array.isArray(data) ? data : [])).catch(() => setSummary([]));
   }, []);
 
   useEffect(() => {
@@ -171,6 +189,7 @@ export default function RapatPage() {
     const res = await fetch(`/api/meetings?month=${selectedMonth}`);
     const data = res.ok ? await res.json() : [];
     setMeetings(Array.isArray(data) ? data : []);
+    fetch("/api/meetings/summary").then((r) => r.ok ? r.json() : []).then((d) => setSummary(Array.isArray(d) ? d : [])).catch(() => {});
   }
 
   function resetForm() {
@@ -363,12 +382,23 @@ export default function RapatPage() {
     fetch(`/api/meetings/${id}`, { method: "DELETE" }).then(() => refreshMeetings());
   }
 
-  const stats = useMemo(() => {
-    const totalActions = meetings.reduce((sum, meeting) => sum + meeting.action_items.length, 0);
-    const completedActions = meetings.reduce((sum, meeting) => sum + meeting.action_items.filter((item) => item.status === "completed").length, 0);
-    const highlights = meetings.reduce((sum, meeting) => sum + countHighlights(meeting.notes), 0);
-    return { totalMeetings: meetings.length, totalActions, completedActions, highlights };
+  const uniqueUsers = useMemo(() => {
+    const names = new Set<string>();
+    meetings.forEach((m) => { if (m.created_by_name) names.add(m.created_by_name); });
+    return Array.from(names).sort();
   }, [meetings]);
+
+  const filteredMeetings = useMemo(() => {
+    if (!filterUser) return meetings;
+    return meetings.filter((m) => m.created_by_name === filterUser);
+  }, [meetings, filterUser]);
+
+  const stats = useMemo(() => {
+    const totalActions = filteredMeetings.reduce((sum, meeting) => sum + meeting.action_items.length, 0);
+    const completedActions = filteredMeetings.reduce((sum, meeting) => sum + meeting.action_items.filter((item) => item.status === "completed").length, 0);
+    const highlights = filteredMeetings.reduce((sum, meeting) => sum + countHighlights(meeting.notes), 0);
+    return { totalMeetings: filteredMeetings.length, totalActions, completedActions, highlights };
+  }, [filteredMeetings]);
 
   return (
     <div className="p-4 md:p-6 max-w-5xl mx-auto space-y-4 animate-fade-in">
@@ -635,48 +665,118 @@ export default function RapatPage() {
         </div>
       )}
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-3">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
-          <div>
-            <div className="text-sm font-semibold text-gray-900">Buku Rapat</div>
-            <div className="text-xs text-gray-500">Pilih bulan untuk membuka catatan rapat lama</div>
-          </div>
-          <input
-            type="month"
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-          />
-        </div>
+      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-2 flex gap-1">
+        {[
+          { key: "list", label: "Buku Rapat", icon: NotebookPen },
+          { key: "recap", label: "Rangkuman", icon: BarChart3 },
+        ].map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.key}
+              onClick={() => setViewMode(item.key as ViewMode)}
+              className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap transition ${
+                viewMode === item.key ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-100"
+              }`}
+            >
+              <Icon className="w-4 h-4" />
+              {item.label}
+            </button>
+          );
+        })}
       </div>
 
-      <div className="space-y-2">
-        {loadingMeetings ? (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
-            <div className="w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin mx-auto mb-2" />
-            <p className="text-gray-400">Memuat data rapat...</p>
+      {viewMode === "recap" ? (
+        <div className="space-y-3">
+          {summary.length === 0 ? (
+            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
+              <BarChart3 className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+              <p className="text-gray-400">Belum ada data rangkuman</p>
+            </div>
+          ) : (
+            summary.map((month) => (
+              <div key={month.month_key} className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                  <div>
+                    <h3 className="font-semibold text-gray-900">{month.label}</h3>
+                    <p className="text-xs text-gray-500">{month.completed_actions} tugas selesai dari {month.total_actions}</p>
+                  </div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
+                    <MiniStat label="Rapat" value={month.total} />
+                    <MiniStat label="Stabilo" value={month.total_highlights} />
+                    <MiniStat label="Tugas" value={month.total_actions} />
+                    <MiniStat label="Selesai" value={month.completed_actions} />
+                  </div>
+                </div>
+                <div className="grid md:grid-cols-2 gap-3 mt-4">
+                  <Breakdown title="Per Toko" rows={month.stores} />
+                  <Breakdown title="Per User" rows={month.users} />
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      ) : (
+        <>
+          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-3">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
+              <div>
+                <div className="text-sm font-semibold text-gray-900">Buku Rapat</div>
+                <div className="text-xs text-gray-500">Pilih bulan untuk membuka catatan rapat lama</div>
+              </div>
+              <div className="flex gap-2">
+                {isOwner && uniqueUsers.length > 1 && (
+                  <div className="relative">
+                    <Filter className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                    <select
+                      value={filterUser}
+                      onChange={(e) => setFilterUser(e.target.value)}
+                      className="pl-8 pr-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white appearance-none"
+                    >
+                      <option value="">Semua User</option>
+                      {uniqueUsers.map((name) => <option key={name} value={name}>{name}</option>)}
+                    </select>
+                  </div>
+                )}
+                <input
+                  type="month"
+                  value={selectedMonth}
+                  onChange={(e) => setSelectedMonth(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+            </div>
           </div>
-        ) : meetings.length === 0 ? (
-          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
-            <NotebookPen className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-            <p className="text-gray-400">Belum ada catatan rapat pada bulan ini</p>
+
+          <div className="space-y-2">
+            {loadingMeetings ? (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
+                <div className="w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin mx-auto mb-2" />
+                <p className="text-gray-400">Memuat data rapat...</p>
+              </div>
+            ) : filteredMeetings.length === 0 ? (
+              <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
+                <NotebookPen className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                <p className="text-gray-400">{filterUser ? `Tidak ada rapat oleh ${filterUser} bulan ini` : "Belum ada catatan rapat pada bulan ini"}</p>
+              </div>
+            ) : (
+              filteredMeetings.map((meeting) => (
+                <MeetingRow
+                  key={meeting.id}
+                  meeting={meeting}
+                  expanded={expandedId === meeting.id}
+                  deleting={deleting === meeting.id}
+                  onExpand={() => setExpandedId(expandedId === meeting.id ? null : meeting.id)}
+                  onActionStatus={(action) => updateActionStatus(meeting.id, action)}
+                  onAskDelete={() => setDeleting(meeting.id)}
+                  onCancelDelete={() => setDeleting(null)}
+                  onDelete={() => handleDelete(meeting.id)}
+                />
+              ))
+            )}
           </div>
-        ) : (
-          meetings.map((meeting) => (
-            <MeetingRow
-              key={meeting.id}
-              meeting={meeting}
-              expanded={expandedId === meeting.id}
-              deleting={deleting === meeting.id}
-              onExpand={() => setExpandedId(expandedId === meeting.id ? null : meeting.id)}
-              onActionStatus={(action) => updateActionStatus(meeting.id, action)}
-              onAskDelete={() => setDeleting(meeting.id)}
-              onCancelDelete={() => setDeleting(null)}
-              onDelete={() => handleDelete(meeting.id)}
-            />
-          ))
-        )}
-      </div>
+        </>
+      )}
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
@@ -803,6 +903,39 @@ function SmallCounter({ label, value }: { label: string; value: string | number 
     <div className="bg-gray-50 rounded-md px-2 py-1.5">
       <div className="text-[10px] text-gray-400">{label}</div>
       <div className="text-sm font-bold text-gray-900">{value}</div>
+    </div>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="bg-gray-50 rounded-md px-2 py-1.5">
+      <div className="text-[10px] text-gray-400">{label}</div>
+      <div className="text-sm font-bold text-gray-900">{value}</div>
+    </div>
+  );
+}
+
+function Breakdown({ title, rows }: { title: string; rows: { name: string; total: number }[] }) {
+  if (!rows.length) return null;
+  const max = Math.max(...rows.map((r) => r.total));
+  return (
+    <div>
+      <div className="text-xs font-semibold text-gray-500 mb-2">{title}</div>
+      <div className="space-y-1.5">
+        {rows.map((row) => (
+          <div key={row.name} className="flex items-center gap-2 text-sm">
+            <span className="w-20 truncate text-gray-600 text-xs">{row.name}</span>
+            <div className="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
+              <div
+                className="bg-blue-500 h-2 rounded-full transition-all"
+                style={{ width: `${(row.total / max) * 100}%` }}
+              />
+            </div>
+            <span className="text-xs font-semibold text-gray-900 w-6 text-right">{row.total}</span>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

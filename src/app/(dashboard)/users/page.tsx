@@ -94,6 +94,7 @@ export default function UsersPage() {
         department: user.department,
         status: user.status,
         permissions: user.permissions,
+        email: user.email,
       }),
     });
 
@@ -153,7 +154,14 @@ export default function UsersPage() {
                     </div>
                   </div>
 
-                  <div className="grid md:grid-cols-[190px_140px] gap-2">
+                  <div className="grid md:grid-cols-[1fr_190px_140px] gap-2">
+                    <input
+                      type="email"
+                      value={user.email || ""}
+                      onChange={(e) => updateUser(user.id, { email: e.target.value || null })}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Email (untuk notifikasi)"
+                    />
                     <select
                       value={user.department || ""}
                       onChange={(e) => updateUser(user.id, { department: e.target.value })}

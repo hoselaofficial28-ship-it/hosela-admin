@@ -15,6 +15,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     department?: string;
     status?: string;
     permissions?: string[];
+    email?: string | null;
   };
 
   if (!Number.isFinite(userId)) {
@@ -45,9 +46,10 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
       await client.query(`
         UPDATE hn_users
         SET department = COALESCE($1, department),
-          status = COALESCE($2, status)
-        WHERE id = $3
-      `, [body.department || null, body.status || null, userId]);
+          status = COALESCE($2, status),
+          email = $3
+        WHERE id = $4
+      `, [body.department || null, body.status || null, body.email ?? null, userId]);
 
       for (const feature of FEATURES) {
         await client.query(`
@@ -86,7 +88,8 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   const updateUser = db.prepare(`
     UPDATE users
     SET department = COALESCE(?, department),
-        status = COALESCE(?, status)
+        status = COALESCE(?, status),
+        email = ?
     WHERE id = ?
   `);
   const upsertPermission = db.prepare(`
@@ -98,7 +101,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
   `);
 
   const save = db.transaction(() => {
-    updateUser.run(body.department || null, body.status || null, userId);
+    updateUser.run(body.department || null, body.status || null, body.email ?? null, userId);
     for (const feature of FEATURES) {
       upsertPermission.run(userId, feature.key, finalPermissions.includes(feature.key) ? 1 : 0);
     }
