@@ -53,6 +53,7 @@ export default function HistoryPage() {
   const [search, setSearch] = useState("");
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(getCurrentMonthSet);
   const [userRole, setUserRole] = useState<string>("");
+  const [userPermissions, setUserPermissions] = useState<string[]>([]);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [deletingDate, setDeletingDate] = useState<string | null>(null);
   const [deletingMonth, setDeletingMonth] = useState<string | null>(null);
@@ -62,7 +63,10 @@ export default function HistoryPage() {
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => r.ok ? r.json() : null)
-      .then((data) => { if (data?.user?.role) setUserRole(data.user.role); })
+      .then((data) => {
+        if (data?.user?.role) setUserRole(data.user.role);
+        if (data?.user?.permissions) setUserPermissions(data.user.permissions);
+      })
       .catch(() => {});
   }, []);
 
@@ -153,7 +157,7 @@ export default function HistoryPage() {
   function expandAll() { setExpandedMonths(new Set(monthGroups.map((m) => m.key))); }
   function collapseAll() { setExpandedMonths(new Set()); }
 
-  const isOwner = userRole === "owner";
+  const canDelete = userRole === "owner" || userPermissions.includes("delete_history");
 
   function handleDeleteRow(date: string) {
     setShipments((prev) => prev.filter((s) => s.date !== date));
@@ -385,7 +389,7 @@ export default function HistoryPage() {
                     {expanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
                   </div>
                 </button>
-                {isOwner && (
+                {canDelete && (
                   <div className="pr-4 shrink-0">
                     {deletingMonth === mg.key ? (
                       <div className="flex items-center gap-1.5">
@@ -416,7 +420,7 @@ export default function HistoryPage() {
                             <th key={s.id} className="text-right px-4 py-2.5 text-xs font-medium" style={{ color: s.color }}>{s.short_name}</th>
                           ))}
                           <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-700">Total</th>
-                          {isOwner && <th className="w-10 px-2 py-2.5"></th>}
+                          {canDelete && <th className="w-10 px-2 py-2.5"></th>}
                         </tr>
                       </thead>
                       <tbody>
@@ -429,7 +433,7 @@ export default function HistoryPage() {
                               </td>
                             ))}
                             <td className="px-4 py-2 text-right font-semibold text-gray-900 tabular-nums">{row.total}</td>
-                            {isOwner && (
+                            {canDelete && (
                               <td className="px-2 py-2">
                                 {deletingDate === row.date ? (
                                   <div className="flex items-center gap-1">
@@ -457,7 +461,7 @@ export default function HistoryPage() {
                             </td>
                           ))}
                           <td className="px-4 py-2.5 text-right text-gray-900 tabular-nums">{mg.totals.total.toLocaleString("id-ID")}</td>
-                          {isOwner && <td></td>}
+                          {canDelete && <td></td>}
                         </tr>
                         <tr className="bg-blue-50/30 font-medium">
                           <td className="px-4 py-2.5 text-gray-500">Rata-rata/hari</td>
@@ -467,7 +471,7 @@ export default function HistoryPage() {
                             </td>
                           ))}
                           <td className="px-4 py-2.5 text-right text-gray-600 tabular-nums">{avgPerDay}</td>
-                          {isOwner && <td></td>}
+                          {canDelete && <td></td>}
                         </tr>
                       </tbody>
                     </table>

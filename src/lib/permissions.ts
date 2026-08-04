@@ -13,6 +13,7 @@ export const FEATURES = [
   { key: "tasks", label: "Tugas", href: "/tasks" },
   { key: "catatan", label: "Catatan Kerja", href: "/catatan" },
   { key: "rapat", label: "Rapat", href: "/rapat" },
+  { key: "delete_history", label: "Hapus Riwayat", href: "" },
   { key: "settings", label: "Pengaturan", href: "/settings" },
   { key: "users", label: "Users", href: "/users" },
 ] as const;

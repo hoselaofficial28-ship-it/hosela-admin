@@ -7,7 +7,7 @@ import { hasPostgres, pgQuery, pgTransaction } from "@/lib/pg";
 export async function DELETE(req: NextRequest) {
   const session = await getSession();
   if (!session) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
-  if (session.role !== "owner") return NextResponse.json({ error: "Hanya owner yang dapat menghapus data riwayat" }, { status: 403 });
+  if (!canAccessFeature(session, "delete_history")) return NextResponse.json({ error: "Kamu tidak memiliki akses untuk menghapus data riwayat" }, { status: 403 });
 
   const { date, store_id, month } = await req.json() as { date?: string; store_id?: number; month?: string };
   if (!date && !month) return NextResponse.json({ error: "Tanggal atau bulan wajib diisi" }, { status: 400 });
