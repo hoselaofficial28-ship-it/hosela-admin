@@ -10,6 +10,7 @@ import {
 import { useState, useEffect, useCallback } from "react";
 import { hasPermission, type FeatureKey } from "@/lib/permissions";
 import { BrandMark } from "@/components/BrandMark";
+import { SessionProvider } from "@/lib/session-context";
 
 interface NavItem {
   href: string;
@@ -176,8 +177,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setTimeout(() => setSwitching(false), 800);
   }
 
+  const sessionValue = { userRole, userPermissions, sessionLoaded };
+
   return (
-    <div className="h-full flex">
+    <SessionProvider value={sessionValue}>
+      <div className="h-full flex">
       {/* Desktop Sidebar */}
       <aside className="hidden md:flex md:w-64 md:flex-col bg-white border-r border-gray-200">
         <div className="flex items-center gap-3 px-6 py-5 border-b border-gray-100">
@@ -418,7 +422,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             );
           })}
         </nav>
+        </div>
       </div>
-    </div>
+    </SessionProvider>
   );
 }

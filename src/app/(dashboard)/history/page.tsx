@@ -7,6 +7,7 @@ import {
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import Toast from "@/components/Toast";
+import { useSession } from "@/lib/session-context";
 
 interface Store {
   id: number;
@@ -52,23 +53,12 @@ export default function HistoryPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(getCurrentMonthSet);
-  const [userRole, setUserRole] = useState<string>("");
-  const [userPermissions, setUserPermissions] = useState<string[]>([]);
+  const { userRole, userPermissions } = useSession();
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [deletingDate, setDeletingDate] = useState<string | null>(null);
   const [deletingMonth, setDeletingMonth] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => {
-        if (data?.user?.role) setUserRole(data.user.role);
-        if (data?.user?.permissions) setUserPermissions(data.user.permissions);
-      })
-      .catch(() => {});
-  }, []);
 
   useEffect(() => {
     fetch("/api/stores").then((r) => r.ok ? r.json() : []).then((data) => setStores(Array.isArray(data) ? data : [])).catch(() => setStores([]));
