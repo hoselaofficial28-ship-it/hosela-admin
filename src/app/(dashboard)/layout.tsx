@@ -395,26 +395,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </div>
         )}
 
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden">
           {children}
         </main>
 
         {/* Mobile Bottom Nav */}
-        <nav className="md:hidden flex items-center justify-around bg-white border-t border-gray-200 py-2">
+        <nav className="md:hidden flex items-center justify-around bg-white border-t border-gray-200 py-1.5 px-1">
           {bottomNavItems.map((item) => {
             const active = pathname === item.href;
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={`flex flex-col items-center gap-0.5 px-3 py-1 rounded-lg text-xs font-medium transition relative ${
+                className={`flex flex-col items-center gap-0 px-1.5 py-1 rounded-lg text-[10px] font-medium transition relative min-w-0 ${
                   active ? "text-blue-600" : "text-gray-400"
                 }`}
               >
                 <item.icon className="w-5 h-5" />
-                {item.label}
+                <span className="truncate max-w-full">{item.label}</span>
                 {item.href === "/tasks" && unreadCount > 0 && (
-                  <span className="absolute -top-0.5 right-1 bg-red-500 text-white text-[8px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center">
+                  <span className="absolute -top-0.5 right-0 bg-red-500 text-white text-[8px] font-bold w-3.5 h-3.5 rounded-full flex items-center justify-center">
                     {unreadCount > 9 ? "+" : unreadCount}
                   </span>
                 )}

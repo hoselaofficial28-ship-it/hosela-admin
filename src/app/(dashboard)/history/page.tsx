@@ -266,7 +266,7 @@ export default function HistoryPage() {
           <h2 className="text-xl font-bold text-gray-900">Riwayat Pengiriman</h2>
           <p className="text-sm text-gray-500">Data pengiriman harian semua toko</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <button
             onClick={exportToCSV}
             disabled={shipments.length === 0}
@@ -322,12 +322,12 @@ export default function HistoryPage() {
       {!loading && monthGroups.length > 0 && (
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
           <h3 className="text-sm font-medium text-gray-500 mb-2">Total Keseluruhan</h3>
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-wrap gap-x-4 gap-y-2">
             {stores.map((s) => (
-              <div key={s.id} className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: s.color }} />
-                <span className="text-sm text-gray-600">{s.short_name}:</span>
-                <span className="text-sm font-bold" style={{ color: s.color }}>{(grandTotals[s.short_name] || 0).toLocaleString("id-ID")}</span>
+              <div key={s.id} className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                <span className="text-xs sm:text-sm text-gray-600">{s.short_name}:</span>
+                <span className="text-xs sm:text-sm font-bold" style={{ color: s.color }}>{(grandTotals[s.short_name] || 0).toLocaleString("id-ID")}</span>
               </div>
             ))}
             <div className="flex items-center gap-2 ml-auto">
@@ -349,25 +349,25 @@ export default function HistoryPage() {
 
           return (
             <div key={mg.key} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              <div className="flex items-center">
+              <div className="flex items-center min-w-0">
                 <button
                   onClick={() => toggleMonth(mg.key)}
-                  className="flex-1 flex items-center justify-between p-4 hover:bg-gray-50 transition"
+                  className="flex-1 flex items-center justify-between p-3 md:p-4 hover:bg-gray-50 transition min-w-0"
                 >
-                  <div className="flex items-center gap-3">
-                    <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center">
-                      <Calendar className="w-5 h-5 text-blue-600" />
+                  <div className="flex items-center gap-2 md:gap-3 min-w-0">
+                    <div className="w-8 h-8 md:w-9 md:h-9 rounded-xl bg-blue-50 flex items-center justify-center shrink-0">
+                      <Calendar className="w-4 h-4 md:w-5 md:h-5 text-blue-600" />
                     </div>
-                    <div className="text-left">
-                      <h3 className="font-semibold text-gray-900">{mg.label}</h3>
-                      <div className="flex items-center gap-2 text-xs text-gray-400">
-                        <span>{mg.activeDays} hari aktif</span>
+                    <div className="text-left min-w-0">
+                      <h3 className="font-semibold text-gray-900 text-sm md:text-base truncate">{mg.label}</h3>
+                      <div className="flex items-center gap-1.5 md:gap-2 text-[10px] md:text-xs text-gray-400">
+                        <span>{mg.activeDays} hari</span>
                         <span>|</span>
-                        <span>Rata-rata {avgPerDay}/hari</span>
+                        <span>~{avgPerDay}/hari</span>
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2 md:gap-4 shrink-0 ml-2">
                     <div className="hidden md:flex items-center gap-3">
                       {stores.map((s) => (
                         <span key={s.id} className="text-xs font-medium tabular-nums" style={{ color: s.color }}>
@@ -375,21 +375,21 @@ export default function HistoryPage() {
                         </span>
                       ))}
                     </div>
-                    <span className="text-lg font-bold text-gray-900 tabular-nums">{mg.totals.total.toLocaleString("id-ID")}</span>
-                    {expanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+                    <span className="text-base md:text-lg font-bold text-gray-900 tabular-nums">{mg.totals.total.toLocaleString("id-ID")}</span>
+                    {expanded ? <ChevronUp className="w-4 h-4 md:w-5 md:h-5 text-gray-400" /> : <ChevronDown className="w-4 h-4 md:w-5 md:h-5 text-gray-400" />}
                   </div>
                 </button>
                 {canDelete && (
-                  <div className="pr-4 shrink-0">
+                  <div className="pr-2 md:pr-4 shrink-0">
                     {deletingMonth === mg.key ? (
-                      <div className="flex items-center gap-1.5">
-                        <button onClick={() => handleDeleteMonth(mg.key, mg.label)} className="px-2.5 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700 transition">Hapus</button>
-                        <button onClick={() => setDeletingMonth(null)} className="px-2.5 py-1.5 bg-gray-200 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-300 transition">Batal</button>
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => handleDeleteMonth(mg.key, mg.label)} className="px-2 py-1.5 bg-red-600 text-white text-[11px] font-medium rounded-lg hover:bg-red-700 transition">Hapus</button>
+                        <button onClick={() => setDeletingMonth(null)} className="px-2 py-1.5 bg-gray-200 text-gray-600 text-[11px] font-medium rounded-lg hover:bg-gray-300 transition">Batal</button>
                       </div>
                     ) : (
                       <button
                         onClick={(e) => { e.stopPropagation(); setDeletingMonth(mg.key); }}
-                        className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                        className="p-1.5 md:p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
                         title={`Hapus riwayat ${mg.label}`}
                       >
                         <Trash2 className="w-4 h-4" />
@@ -402,41 +402,41 @@ export default function HistoryPage() {
               {expanded && (
                 <div className="border-t border-gray-100">
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                    <table className="w-full text-xs sm:text-sm">
                       <thead>
                         <tr className="bg-gray-50/80">
-                          <th className="text-left px-4 py-2.5 text-xs font-medium text-gray-500">Tanggal</th>
+                          <th className="text-left px-2 sm:px-4 py-2 text-xs font-medium text-gray-500 whitespace-nowrap">Tanggal</th>
                           {stores.map((s) => (
-                            <th key={s.id} className="text-right px-4 py-2.5 text-xs font-medium" style={{ color: s.color }}>{s.short_name}</th>
+                            <th key={s.id} className="text-right px-1.5 sm:px-4 py-2 text-xs font-medium whitespace-nowrap" style={{ color: s.color }}>{s.short_name}</th>
                           ))}
-                          <th className="text-right px-4 py-2.5 text-xs font-medium text-gray-700">Total</th>
-                          {canDelete && <th className="w-10 px-2 py-2.5"></th>}
+                          <th className="text-right px-2 sm:px-4 py-2 text-xs font-medium text-gray-700">Total</th>
+                          {canDelete && <th className="w-8 sm:w-10 px-1 sm:px-2 py-2"></th>}
                         </tr>
                       </thead>
                       <tbody>
                         {mg.rows.map((row) => (
                           <tr key={row.date} className="border-t border-gray-50 hover:bg-gray-50/50 transition group">
-                            <td className="px-4 py-2 text-gray-700 font-medium">{formatDate(row.date)}</td>
+                            <td className="px-2 sm:px-4 py-1.5 sm:py-2 text-gray-700 font-medium whitespace-nowrap">{formatDate(row.date)}</td>
                             {stores.map((s) => (
-                              <td key={s.id} className="px-4 py-2 text-right text-gray-600 tabular-nums">
+                              <td key={s.id} className="px-1.5 sm:px-4 py-1.5 sm:py-2 text-right text-gray-600 tabular-nums">
                                 {(row[s.short_name] as number) || 0}
                               </td>
                             ))}
-                            <td className="px-4 py-2 text-right font-semibold text-gray-900 tabular-nums">{row.total}</td>
+                            <td className="px-2 sm:px-4 py-1.5 sm:py-2 text-right font-semibold text-gray-900 tabular-nums">{row.total}</td>
                             {canDelete && (
-                              <td className="px-2 py-2">
+                              <td className="px-1 sm:px-2 py-1.5 sm:py-2">
                                 {deletingDate === row.date ? (
                                   <div className="flex items-center gap-1">
-                                    <button onClick={() => handleDeleteRow(row.date)} className="px-2 py-1 bg-red-600 text-white text-xs rounded">Ya</button>
-                                    <button onClick={() => setDeletingDate(null)} className="px-2 py-1 bg-gray-200 text-gray-600 text-xs rounded">Batal</button>
+                                    <button onClick={() => handleDeleteRow(row.date)} className="px-1.5 py-1 bg-red-600 text-white text-[10px] sm:text-xs rounded">Ya</button>
+                                    <button onClick={() => setDeletingDate(null)} className="px-1.5 py-1 bg-gray-200 text-gray-600 text-[10px] sm:text-xs rounded">Batal</button>
                                   </div>
                                 ) : (
                                   <button
                                     onClick={() => setDeletingDate(row.date)}
-                                    className="p-1 text-gray-300 hover:text-red-600 opacity-0 group-hover:opacity-100 transition"
+                                    className="p-1 text-gray-300 hover:text-red-600 md:opacity-0 md:group-hover:opacity-100 transition"
                                     title="Hapus baris ini"
                                   >
-                                    <Trash2 className="w-4 h-4" />
+                                    <Trash2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                                   </button>
                                 )}
                               </td>
@@ -444,23 +444,23 @@ export default function HistoryPage() {
                           </tr>
                         ))}
                         <tr className="bg-blue-50/50 border-t-2 border-blue-100 font-semibold">
-                          <td className="px-4 py-2.5 text-gray-700">Total {mg.label}</td>
+                          <td className="px-2 sm:px-4 py-2 text-gray-700 whitespace-nowrap">Total</td>
                           {stores.map((s) => (
-                            <td key={s.id} className="px-4 py-2.5 text-right tabular-nums" style={{ color: s.color }}>
+                            <td key={s.id} className="px-1.5 sm:px-4 py-2 text-right tabular-nums" style={{ color: s.color }}>
                               {(mg.totals[s.short_name] || 0).toLocaleString("id-ID")}
                             </td>
                           ))}
-                          <td className="px-4 py-2.5 text-right text-gray-900 tabular-nums">{mg.totals.total.toLocaleString("id-ID")}</td>
+                          <td className="px-2 sm:px-4 py-2 text-right text-gray-900 tabular-nums">{mg.totals.total.toLocaleString("id-ID")}</td>
                           {canDelete && <td></td>}
                         </tr>
                         <tr className="bg-blue-50/30 font-medium">
-                          <td className="px-4 py-2.5 text-gray-500">Rata-rata/hari</td>
+                          <td className="px-2 sm:px-4 py-2 text-gray-500 whitespace-nowrap">Rata-rata</td>
                           {stores.map((s) => (
-                            <td key={s.id} className="px-4 py-2.5 text-right text-gray-400 tabular-nums">
+                            <td key={s.id} className="px-1.5 sm:px-4 py-2 text-right text-gray-400 tabular-nums">
                               {mg.activeDays > 0 ? Math.round((mg.totals[s.short_name] || 0) / mg.activeDays) : 0}
                             </td>
                           ))}
-                          <td className="px-4 py-2.5 text-right text-gray-600 tabular-nums">{avgPerDay}</td>
+                          <td className="px-2 sm:px-4 py-2 text-right text-gray-600 tabular-nums">{avgPerDay}</td>
                           {canDelete && <td></td>}
                         </tr>
                       </tbody>

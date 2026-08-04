@@ -248,10 +248,10 @@ export default function DashboardPage() {
         </div>
       ) : stats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <StatCard icon={<Package className="w-5 h-5 text-blue-600" />} label="Total Pengiriman" value={stats.total.toLocaleString("id-ID")} badge={stats.changePercent !== null ? { value: stats.changePercent, type: stats.changePercent >= 0 ? "up" : "down" } : undefined} />
-          <StatCard icon={<Calendar className="w-5 h-5 text-purple-600" />} label="Rata-rata / Hari" value={stats.avgPerDay.toLocaleString("id-ID")} subtext="hari aktif" />
-          <StatCard icon={<TrendingUp className="w-5 h-5 text-green-600" />} label="Hari Tertinggi" value={stats.highestDay ? stats.highestDay.total.toLocaleString("id-ID") : "-"} subtext={stats.highestDay ? formatDateShort(stats.highestDay.date) : ""} />
-          <StatCard icon={<TrendingDown className="w-5 h-5 text-orange-600" />} label="Hari Terendah" value={stats.lowestDay ? stats.lowestDay.total.toLocaleString("id-ID") : "-"} subtext={stats.lowestDay ? formatDateShort(stats.lowestDay.date) : ""} />
+          <StatCard icon={<Package className="w-4 h-4 md:w-5 md:h-5 text-blue-600" />} label="Total Kirim" value={stats.total.toLocaleString("id-ID")} badge={stats.changePercent !== null ? { value: stats.changePercent, type: stats.changePercent >= 0 ? "up" : "down" } : undefined} />
+          <StatCard icon={<Calendar className="w-4 h-4 md:w-5 md:h-5 text-purple-600" />} label="Rata-rata/Hari" value={stats.avgPerDay.toLocaleString("id-ID")} subtext="hari aktif" />
+          <StatCard icon={<TrendingUp className="w-4 h-4 md:w-5 md:h-5 text-green-600" />} label="Tertinggi" value={stats.highestDay ? stats.highestDay.total.toLocaleString("id-ID") : "-"} subtext={stats.highestDay ? formatDateShort(stats.highestDay.date) : ""} />
+          <StatCard icon={<TrendingDown className="w-4 h-4 md:w-5 md:h-5 text-orange-600" />} label="Terendah" value={stats.lowestDay ? stats.lowestDay.total.toLocaleString("id-ID") : "-"} subtext={stats.lowestDay ? formatDateShort(stats.lowestDay.date) : ""} />
         </div>
       )}
 
@@ -326,12 +326,12 @@ function StatCard({ icon, label, value, subtext, badge }: {
   badge?: { value: number; type: "up" | "down" };
 }) {
   return (
-    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 animate-slide-up">
-      <div className="flex items-center gap-2 mb-2">
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-3 md:p-4 animate-slide-up">
+      <div className="flex items-center gap-1.5 md:gap-2 mb-1.5 md:mb-2">
         {icon}
-        <span className="text-xs font-medium text-gray-500">{label}</span>
+        <span className="text-[10px] md:text-xs font-medium text-gray-500 truncate">{label}</span>
       </div>
-      <div className="text-2xl font-bold text-gray-900">{value}</div>
+      <div className="text-xl md:text-2xl font-bold text-gray-900">{value}</div>
       <div className="flex items-center gap-1 mt-1">
         {badge && (
           <span className={`flex items-center gap-0.5 text-xs font-medium ${badge.type === "up" ? "text-green-600" : "text-red-600"}`}>
@@ -339,7 +339,7 @@ function StatCard({ icon, label, value, subtext, badge }: {
             {Math.abs(badge.value)}%
           </span>
         )}
-        {subtext && <span className="text-xs text-gray-400">{subtext}</span>}
+        {subtext && <span className="text-[10px] md:text-xs text-gray-400">{subtext}</span>}
       </div>
     </div>
   );

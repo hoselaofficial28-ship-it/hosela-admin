@@ -338,12 +338,12 @@ export default function InputPage() {
         <p className="text-sm text-gray-500">Catat resi harian, jam ramai pesanan, dan pengiriman kilat</p>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-2 flex gap-1 overflow-x-auto">
+      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-1.5 flex gap-1 overflow-x-auto">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-2 px-3 py-2 rounded-md text-sm font-medium whitespace-nowrap transition ${
+            className={`flex items-center gap-1.5 px-2.5 py-2 rounded-md text-xs sm:text-sm font-medium whitespace-nowrap transition flex-1 justify-center sm:flex-none ${
               activeTab === tab.key ? "bg-gray-900 text-white" : "text-gray-600 hover:bg-gray-100"
             }`}
           >

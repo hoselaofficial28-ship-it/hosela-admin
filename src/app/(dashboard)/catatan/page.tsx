@@ -382,7 +382,7 @@ export default function CatatanPage() {
                     <h3 className="font-semibold text-gray-900">{month.label}</h3>
                     <p className="text-xs text-gray-500">{month.completed} selesai dari {month.total} catatan</p>
                   </div>
-                  <div className="grid grid-cols-4 gap-2 text-center">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
                     <MiniStat label="Belum" value={month.pending} />
                     <MiniStat label="Proses" value={month.in_progress} />
                     <MiniStat label="Selesai" value={month.completed} />
@@ -463,7 +463,7 @@ export default function CatatanPage() {
           </div>
 
           {selectionMode && (
-            <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 flex items-center justify-between animate-slide-up">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2.5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 animate-slide-up">
               <span className="text-sm font-medium text-blue-800">{selectedIds.size} catatan dipilih</span>
               <div className="flex items-center gap-2">
                 <button onClick={selectAll} className="text-xs font-medium text-blue-600 hover:text-blue-700 px-2 py-1">Pilih Semua</button>

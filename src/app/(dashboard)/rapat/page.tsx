@@ -508,7 +508,7 @@ export default function RapatPage() {
                   const text = e.clipboardData.getData("text/plain");
                   document.execCommand("insertText", false, text);
                 }}
-                className="meeting-note-editor w-full min-h-[360px] px-4 py-3 text-sm leading-7 outline-none resize-y overflow-auto bg-[linear-gradient(#fff_31px,#eef2f7_32px)] bg-[length:100%_32px] text-gray-800"
+                className="meeting-note-editor w-full min-h-[240px] md:min-h-[360px] px-3 md:px-4 py-3 text-sm leading-7 outline-none resize-y overflow-auto bg-[linear-gradient(#fff_31px,#eef2f7_32px)] bg-[length:100%_32px] text-gray-800"
                 data-placeholder={"Tulis catatan seperti di buku rapat...\A\AContoh:\A- Pembahasan stok dashboard\A- Kendala packing hari ini\A- Follow-up marketplace\A\AEnter untuk turun baris. Tab akan pindah ke field berikutnya."}
               />
             </div>
@@ -569,48 +569,52 @@ export default function RapatPage() {
               </div>
               <div className="space-y-2">
                 {actionItems.map((item, index) => (
-                  <div key={index} className="grid md:grid-cols-[1fr_130px_130px_118px_96px_32px] gap-2 items-center">
+                  <div key={index} className="border border-gray-100 rounded-lg p-2 md:p-0 md:border-0 space-y-2 md:space-y-0 md:grid md:grid-cols-[1fr_130px_130px_118px_96px_32px] md:gap-2 md:items-center">
                     <input
                       type="text"
                       value={item.title}
                       onChange={(e) => updateAction(index, { title: e.target.value })}
-                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
                       placeholder="contoh: Cek ulang stok produk"
                     />
-                    <input
-                      type="text"
-                      value={item.assigned_to}
-                      onChange={(e) => updateAction(index, { assigned_to: e.target.value })}
-                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                      placeholder="PIC"
-                    />
-                    <select
-                      value={item.priority}
-                      onChange={(e) => updateAction(index, { priority: e.target.value as ActionForm["priority"] })}
-                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                    >
-                      <option value="low">Rendah</option>
-                      <option value="normal">Normal</option>
-                      <option value="high">Penting</option>
-                    </select>
-                    <input
-                      type="date"
-                      value={item.due_date}
-                      onChange={(e) => updateAction(index, { due_date: e.target.value })}
-                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <label className="flex items-center gap-2 text-xs text-gray-600">
+                    <div className="grid grid-cols-2 gap-2 md:contents">
                       <input
-                        type="checkbox"
-                        checked={item.create_note}
-                        onChange={(e) => updateAction(index, { create_note: e.target.checked })}
-                        className="w-4 h-4 rounded border-gray-300"
+                        type="text"
+                        value={item.assigned_to}
+                        onChange={(e) => updateAction(index, { assigned_to: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="PIC"
                       />
-                      Catatan
-                    </label>
-                    <button type="button" onClick={() => removeActionItem(index)} className="p-2 text-gray-400 hover:text-red-600">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                      <select
+                        value={item.priority}
+                        onChange={(e) => updateAction(index, { priority: e.target.value as ActionForm["priority"] })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      >
+                        <option value="low">Rendah</option>
+                        <option value="normal">Normal</option>
+                        <option value="high">Penting</option>
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="date"
+                        value={item.due_date}
+                        onChange={(e) => updateAction(index, { due_date: e.target.value })}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <label className="flex items-center gap-1.5 text-xs text-gray-600 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={item.create_note}
+                          onChange={(e) => updateAction(index, { create_note: e.target.checked })}
+                          className="w-4 h-4 rounded border-gray-300"
+                        />
+                        Catatan
+                      </label>
+                      <button type="button" onClick={() => removeActionItem(index)} className="p-2 text-gray-400 hover:text-red-600 shrink-0">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
