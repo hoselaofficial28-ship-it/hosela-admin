@@ -82,6 +82,7 @@ export default function CatatanPage() {
   const [editNote, setEditNote] = useState<Note | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<number | null>(null);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [bulkDeleting, setBulkDeleting] = useState(false);
@@ -160,18 +161,24 @@ export default function CatatanPage() {
       setToast({ message: "Judul wajib diisi", type: "error" });
       return;
     }
+    if (saving) return;
+    setSaving(true);
 
-    const body = { ...form, store_id: form.store_id ? Number(form.store_id) : null };
-    const url = editNote ? `/api/notes/${editNote.id}` : "/api/notes";
-    const method = editNote ? "PUT" : "POST";
-    const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    try {
+      const body = { ...form, store_id: form.store_id ? Number(form.store_id) : null };
+      const url = editNote ? `/api/notes/${editNote.id}` : "/api/notes";
+      const method = editNote ? "PUT" : "POST";
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
-    if (res.ok) {
-      setToast({ message: editNote ? "Catatan diperbarui" : "Catatan ditambahkan", type: "success" });
-      resetForm();
-      refreshNotes();
-    } else {
-      setToast({ message: "Gagal menyimpan catatan", type: "error" });
+      if (res.ok) {
+        setToast({ message: editNote ? "Catatan diperbarui" : "Catatan ditambahkan", type: "success" });
+        resetForm();
+        refreshNotes();
+      } else {
+        setToast({ message: "Gagal menyimpan catatan", type: "error" });
+      }
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -361,10 +368,15 @@ export default function CatatanPage() {
               </div>
             </div>
             <div className="flex gap-2 pt-1">
-              <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition">
-                {editNote ? "Simpan" : "Tambah Catatan"}
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition flex items-center gap-2"
+              >
+                {saving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                {saving ? "Menyimpan..." : editNote ? "Simpan" : "Tambah Catatan"}
               </button>
-              <button onClick={resetForm} className="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-300 transition">Batal</button>
+              <button onClick={resetForm} disabled={saving} className="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-300 disabled:opacity-60 transition">Batal</button>
             </div>
           </div>
         </div>
