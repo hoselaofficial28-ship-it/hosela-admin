@@ -7,7 +7,9 @@ import {
 } from "lucide-react";
 import Toast from "@/components/Toast";
 import { formatDate } from "@/lib/utils";
+import { useSession } from "@/lib/session-context";
 
+interface AppUser { id: number; name: string; username: string; role: string; }
 interface Store { id: number; short_name: string; color: string; }
 
 interface MeetingAction {
@@ -129,13 +131,16 @@ function textToEditorHtml(value: string) {
 
 export default function RapatPage() {
   const notesRef = useRef<HTMLDivElement | null>(null);
+  const { userRole } = useSession();
   const [stores, setStores] = useState<Store[]>([]);
+  const [allUsers, setAllUsers] = useState<AppUser[]>([]);
   const [meetings, setMeetings] = useState<Meeting[]>([]);
   const [loadingMeetings, setLoadingMeetings] = useState(true);
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey());
   const [showForm, setShowForm] = useState(false);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [highlightColor, setHighlightColor] = useState<HighlightColor>("yellow");
   const [aiLoading, setAiLoading] = useState(false);
@@ -151,6 +156,7 @@ export default function RapatPage() {
 
   useEffect(() => {
     fetch("/api/stores").then((r) => r.ok ? r.json() : []).then((data) => setStores(Array.isArray(data) ? data : [])).catch(() => setStores([]));
+    fetch("/api/users/list").then((r) => r.ok ? r.json() : []).then((data) => setAllUsers(Array.isArray(data) ? data : [])).catch(() => setAllUsers([]));
   }, []);
 
   useEffect(() => {
@@ -287,35 +293,49 @@ export default function RapatPage() {
     }
   }
 
+  function toggleParticipant(name: string) {
+    setForm((prev) => {
+      const list = prev.participants ? prev.participants.split(", ").filter(Boolean) : [];
+      const updated = list.includes(name) ? list.filter((n) => n !== name) : [...list, name];
+      return { ...prev, participants: updated.join(", ") };
+    });
+  }
+
   async function handleSave() {
     if (!form.title.trim() || !form.meeting_date) {
       setToast({ message: "Judul dan tanggal rapat wajib diisi", type: "error" });
       return;
     }
+    if (saving) return;
+    setSaving(true);
 
-    const res = await fetch("/api/meetings", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title: form.title,
-        meeting_date: form.meeting_date,
-        participants: form.participants,
-        agenda: null,
-        notes: form.notes,
-        decisions: null,
-        important_points: null,
-        store_id: form.store_id ? Number(form.store_id) : null,
-        action_items: actionItems.filter((item) => item.title.trim()),
-      }),
-    });
+    try {
+      const res = await fetch("/api/meetings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: form.title,
+          meeting_date: form.meeting_date,
+          participants: form.participants,
+          agenda: null,
+          notes: form.notes,
+          decisions: null,
+          important_points: null,
+          store_id: form.store_id ? Number(form.store_id) : null,
+          action_items: actionItems.filter((item) => item.title.trim()),
+        }),
+      });
 
-    if (res.ok) {
-      setToast({ message: "Catatan rapat disimpan", type: "success" });
-      resetForm();
-      refreshMeetings();
-    } else {
-      const data = await res.json();
-      setToast({ message: data.error || "Gagal menyimpan rapat", type: "error" });
+      if (res.ok) {
+        setToast({ message: "Catatan rapat disimpan", type: "success" });
+        resetForm();
+        refreshMeetings();
+      } else {
+        const data = await res.json();
+        setToast({ message: data.error || "Gagal menyimpan rapat", type: "error" });
+      }
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -405,13 +425,26 @@ export default function RapatPage() {
             <div className="grid md:grid-cols-[1fr_220px] gap-3">
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Peserta</label>
-                <input
-                  type="text"
-                  value={form.participants}
-                  onChange={(e) => setForm({ ...form, participants: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Nama peserta rapat"
-                />
+                <div className="flex flex-wrap gap-1.5 px-3 py-2 border border-gray-300 rounded-lg min-h-[38px]">
+                  {allUsers.map((u) => {
+                    const selected = form.participants.split(", ").filter(Boolean).includes(u.name);
+                    return (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => toggleParticipant(u.name)}
+                        className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${
+                          selected
+                            ? "bg-blue-600 text-white"
+                            : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                        }`}
+                      >
+                        {u.name}
+                      </button>
+                    );
+                  })}
+                  {allUsers.length === 0 && <span className="text-xs text-gray-400">Memuat user...</span>}
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Toko Terkait</label>
@@ -584,8 +617,15 @@ export default function RapatPage() {
             </div>
 
             <div className="flex gap-2 pt-1">
-              <button onClick={handleSave} className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition">Simpan Rapat</button>
-              <button onClick={resetForm} className="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-300 transition">Batal</button>
+              <button
+                onClick={handleSave}
+                disabled={saving}
+                className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed transition flex items-center gap-2"
+              >
+                {saving && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                {saving ? "Menyimpan..." : "Simpan Rapat"}
+              </button>
+              <button onClick={resetForm} disabled={saving} className="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-300 disabled:opacity-60 transition">Batal</button>
             </div>
           </div>
         </div>

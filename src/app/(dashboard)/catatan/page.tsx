@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import Toast from "@/components/Toast";
 import { formatDate } from "@/lib/utils";
+import { useSession } from "@/lib/session-context";
 
 interface Store { id: number; short_name: string; color: string; }
 
@@ -39,6 +40,7 @@ interface SummaryMonth {
 }
 
 type ViewMode = "active" | "history" | "recap";
+type SortKey = "newest" | "oldest" | "priority_high" | "priority_low" | "user_az" | "user_za";
 
 const STATUS_MAP = {
   pending: { label: "Belum", icon: Circle, color: "text-gray-400", bg: "bg-gray-100" },
@@ -62,9 +64,14 @@ function monthInputLabel(monthKey: string) {
   return new Date(year, month - 1, 1).toLocaleDateString("id-ID", { month: "long", year: "numeric" });
 }
 
+const PRIORITY_ORDER = { high: 0, normal: 1, low: 2 };
+
 export default function CatatanPage() {
+  const { userRole } = useSession();
+  const isOwner = userRole === "owner";
   const [notes, setNotes] = useState<Note[]>([]);
   const [loadingNotes, setLoadingNotes] = useState(true);
+  const [sortBy, setSortBy] = useState<SortKey>("newest");
   const [summary, setSummary] = useState<SummaryMonth[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>("active");
@@ -213,14 +220,39 @@ export default function CatatanPage() {
 
   const visibleNotes = useMemo(() => {
     const term = search.toLowerCase().trim();
-    if (!term) return notes;
-    return notes.filter((note) => [
-      note.title,
-      note.description || "",
-      note.store_name || "",
-      note.user_name || "",
-    ].some((value) => value.toLowerCase().includes(term)));
-  }, [notes, search]);
+    let filtered = notes;
+    if (term) {
+      filtered = notes.filter((note) => [
+        note.title,
+        note.description || "",
+        note.store_name || "",
+        note.user_name || "",
+      ].some((value) => value.toLowerCase().includes(term)));
+    }
+
+    const sorted = [...filtered];
+    switch (sortBy) {
+      case "oldest":
+        sorted.sort((a, b) => a.created_at.localeCompare(b.created_at));
+        break;
+      case "newest":
+        sorted.sort((a, b) => b.created_at.localeCompare(a.created_at));
+        break;
+      case "priority_high":
+        sorted.sort((a, b) => PRIORITY_ORDER[a.priority] - PRIORITY_ORDER[b.priority]);
+        break;
+      case "priority_low":
+        sorted.sort((a, b) => PRIORITY_ORDER[b.priority] - PRIORITY_ORDER[a.priority]);
+        break;
+      case "user_az":
+        sorted.sort((a, b) => (a.user_name || "").localeCompare(b.user_name || ""));
+        break;
+      case "user_za":
+        sorted.sort((a, b) => (b.user_name || "").localeCompare(a.user_name || ""));
+        break;
+    }
+    return sorted;
+  }, [notes, search, sortBy]);
 
   const activeCounts = {
     all: notes.length,
@@ -379,6 +411,18 @@ export default function CatatanPage() {
                   placeholder="Cari judul, toko, user, atau isi catatan..."
                 />
               </div>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value as SortKey)}
+                className="px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+              >
+                <option value="newest">Terbaru</option>
+                <option value="oldest">Terlama</option>
+                <option value="priority_high">Prioritas Tinggi</option>
+                <option value="priority_low">Prioritas Rendah</option>
+                {isOwner && <option value="user_az">User A-Z</option>}
+                {isOwner && <option value="user_za">User Z-A</option>}
+              </select>
               {viewMode === "history" && (
                 <input
                   type="month"
