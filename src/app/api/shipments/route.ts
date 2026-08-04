@@ -9,11 +9,13 @@ export async function DELETE(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   if (session.role !== "owner") return NextResponse.json({ error: "Hanya owner yang dapat menghapus data riwayat" }, { status: 403 });
 
-  const { date, store_id } = await req.json() as { date: string; store_id?: number };
-  if (!date) return NextResponse.json({ error: "Tanggal wajib diisi" }, { status: 400 });
+  const { date, store_id, month } = await req.json() as { date?: string; store_id?: number; month?: string };
+  if (!date && !month) return NextResponse.json({ error: "Tanggal atau bulan wajib diisi" }, { status: 400 });
 
   if (hasPostgres()) {
-    if (store_id) {
+    if (month) {
+      await pgQuery("DELETE FROM hn_daily_shipments WHERE to_char(date::date, 'YYYY-MM') = $1", [month]);
+    } else if (store_id) {
       await pgQuery("DELETE FROM hn_daily_shipments WHERE date = $1 AND store_id = $2", [date, store_id]);
     } else {
       await pgQuery("DELETE FROM hn_daily_shipments WHERE date = $1", [date]);
@@ -22,7 +24,9 @@ export async function DELETE(req: NextRequest) {
   }
 
   const db = getDb();
-  if (store_id) {
+  if (month) {
+    db.prepare("DELETE FROM daily_shipments WHERE substr(date, 1, 7) = ?").run(month);
+  } else if (store_id) {
     db.prepare("DELETE FROM daily_shipments WHERE date = ? AND store_id = ?").run(date, store_id);
   } else {
     db.prepare("DELETE FROM daily_shipments WHERE date = ?").run(date);

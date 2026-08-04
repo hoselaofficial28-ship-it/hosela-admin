@@ -55,13 +55,14 @@ export default function HistoryPage() {
   const [userRole, setUserRole] = useState<string>("");
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
   const [deletingDate, setDeletingDate] = useState<string | null>(null);
+  const [deletingMonth, setDeletingMonth] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => r.ok ? r.json() : null)
-      .then((data) => { if (data?.role) setUserRole(data.role); })
+      .then((data) => { if (data?.user?.role) setUserRole(data.user.role); })
       .catch(() => {});
   }, []);
 
@@ -162,6 +163,17 @@ export default function HistoryPage() {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ date }),
+    }).then(() => loadShipments());
+  }
+
+  function handleDeleteMonth(monthKey: string, label: string) {
+    setShipments((prev) => prev.filter((s) => !s.date.startsWith(monthKey)));
+    setDeletingMonth(null);
+    setToast({ message: `Riwayat ${label} dihapus`, type: "success" });
+    fetch("/api/shipments", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ month: monthKey }),
     }).then(() => loadShipments());
   }
 
@@ -343,35 +355,55 @@ export default function HistoryPage() {
 
           return (
             <div key={mg.key} className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-              <button
-                onClick={() => toggleMonth(mg.key)}
-                className="w-full flex items-center justify-between p-4 hover:bg-gray-50 transition"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center">
-                    <Calendar className="w-5 h-5 text-blue-600" />
-                  </div>
-                  <div className="text-left">
-                    <h3 className="font-semibold text-gray-900">{mg.label}</h3>
-                    <div className="flex items-center gap-2 text-xs text-gray-400">
-                      <span>{mg.activeDays} hari aktif</span>
-                      <span>|</span>
-                      <span>Rata-rata {avgPerDay}/hari</span>
+              <div className="flex items-center">
+                <button
+                  onClick={() => toggleMonth(mg.key)}
+                  className="flex-1 flex items-center justify-between p-4 hover:bg-gray-50 transition"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-blue-50 flex items-center justify-center">
+                      <Calendar className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div className="text-left">
+                      <h3 className="font-semibold text-gray-900">{mg.label}</h3>
+                      <div className="flex items-center gap-2 text-xs text-gray-400">
+                        <span>{mg.activeDays} hari aktif</span>
+                        <span>|</span>
+                        <span>Rata-rata {avgPerDay}/hari</span>
+                      </div>
                     </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  <div className="hidden md:flex items-center gap-3">
-                    {stores.map((s) => (
-                      <span key={s.id} className="text-xs font-medium tabular-nums" style={{ color: s.color }}>
-                        {(mg.totals[s.short_name] || 0).toLocaleString("id-ID")}
-                      </span>
-                    ))}
+                  <div className="flex items-center gap-4">
+                    <div className="hidden md:flex items-center gap-3">
+                      {stores.map((s) => (
+                        <span key={s.id} className="text-xs font-medium tabular-nums" style={{ color: s.color }}>
+                          {(mg.totals[s.short_name] || 0).toLocaleString("id-ID")}
+                        </span>
+                      ))}
+                    </div>
+                    <span className="text-lg font-bold text-gray-900 tabular-nums">{mg.totals.total.toLocaleString("id-ID")}</span>
+                    {expanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
                   </div>
-                  <span className="text-lg font-bold text-gray-900 tabular-nums">{mg.totals.total.toLocaleString("id-ID")}</span>
-                  {expanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
-                </div>
-              </button>
+                </button>
+                {isOwner && (
+                  <div className="pr-4 shrink-0">
+                    {deletingMonth === mg.key ? (
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => handleDeleteMonth(mg.key, mg.label)} className="px-2.5 py-1.5 bg-red-600 text-white text-xs font-medium rounded-lg hover:bg-red-700 transition">Hapus</button>
+                        <button onClick={() => setDeletingMonth(null)} className="px-2.5 py-1.5 bg-gray-200 text-gray-600 text-xs font-medium rounded-lg hover:bg-gray-300 transition">Batal</button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDeletingMonth(mg.key); }}
+                        className="p-2 text-gray-300 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                        title={`Hapus riwayat ${mg.label}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
 
               {expanded && (
                 <div className="border-t border-gray-100">
