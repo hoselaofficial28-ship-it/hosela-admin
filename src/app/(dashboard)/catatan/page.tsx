@@ -444,6 +444,19 @@ export default function CatatanPage() {
                   placeholder="Cari judul, toko, user, atau isi catatan..."
                 />
               </div>
+              {isOwner && uniqueUsers.length > 1 && (
+                <select
+                  value={filterUser}
+                  onChange={(e) => setFilterUser(e.target.value)}
+                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                >
+                  <option value="">Semua User</option>
+                  <option value="__me__">Saya</option>
+                  {uniqueUsers.filter((u) => u !== userName).map((name) => (
+                    <option key={name} value={name}>{name}</option>
+                  ))}
+                </select>
+              )}
               <select
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value as SortKey)}
@@ -486,37 +499,6 @@ export default function CatatanPage() {
                     </button>
                   ))}
                 </div>
-                {isOwner && uniqueUsers.length > 1 && (
-                  <div className="flex gap-1.5 overflow-x-auto pb-1">
-                    <button
-                      onClick={() => setFilterUser("")}
-                      className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap transition ${
-                        filterUser === "" ? "bg-purple-600 text-white" : "bg-purple-50 text-purple-600 hover:bg-purple-100"
-                      }`}
-                    >
-                      Semua User
-                    </button>
-                    <button
-                      onClick={() => setFilterUser("__me__")}
-                      className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap transition ${
-                        filterUser === "__me__" ? "bg-purple-600 text-white" : "bg-purple-50 text-purple-600 hover:bg-purple-100"
-                      }`}
-                    >
-                      Saya
-                    </button>
-                    {uniqueUsers.filter((u) => u !== userName).map((name) => (
-                      <button
-                        key={name}
-                        onClick={() => setFilterUser(filterUser === name ? "" : name)}
-                        className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap transition ${
-                          filterUser === name ? "bg-purple-600 text-white" : "bg-purple-50 text-purple-600 hover:bg-purple-100"
-                        }`}
-                      >
-                        {name}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
