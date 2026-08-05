@@ -93,6 +93,7 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
 
   const { id } = await params;
   if (hasPostgres()) {
+    await pgQuery("UPDATE hn_meeting_action_items SET note_id = NULL WHERE note_id = $1", [id]);
     if (session.role === "owner") {
       await pgQuery("DELETE FROM hn_admin_notes WHERE id = $1", [id]);
     } else {
@@ -102,6 +103,11 @@ export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ 
   }
 
   const db = getDb();
-  db.prepare("DELETE FROM admin_notes WHERE id = ? AND user_id = ?").run(id, session.id);
+  db.prepare("UPDATE meeting_action_items SET note_id = NULL WHERE note_id = ?").run(id);
+  if (session.role === "owner") {
+    db.prepare("DELETE FROM admin_notes WHERE id = ?").run(id);
+  } else {
+    db.prepare("DELETE FROM admin_notes WHERE id = ? AND user_id = ?").run(id, session.id);
+  }
   return NextResponse.json({ success: true });
 }
