@@ -67,7 +67,7 @@ function monthInputLabel(monthKey: string) {
 const PRIORITY_ORDER = { high: 0, normal: 1, low: 2 };
 
 export default function CatatanPage() {
-  const { userRole } = useSession();
+  const { userRole, userName } = useSession();
   const isOwner = userRole === "owner";
   const [notes, setNotes] = useState<Note[]>([]);
   const [loadingNotes, setLoadingNotes] = useState(true);
@@ -76,6 +76,7 @@ export default function CatatanPage() {
   const [stores, setStores] = useState<Store[]>([]);
   const [viewMode, setViewMode] = useState<ViewMode>("active");
   const [filterStatus, setFilterStatus] = useState("all");
+  const [filterUser, setFilterUser] = useState("");
   const [selectedMonth, setSelectedMonth] = useState(currentMonthKey());
   const [search, setSearch] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -225,11 +226,23 @@ export default function CatatanPage() {
     setBulkDeleting(false);
   }
 
+  const uniqueUsers = useMemo(() => {
+    const names = new Set<string>();
+    notes.forEach((n) => { if (n.user_name) names.add(n.user_name); });
+    return Array.from(names).sort();
+  }, [notes]);
+
   const visibleNotes = useMemo(() => {
-    const term = search.toLowerCase().trim();
     let filtered = notes;
+    if (filterUser === "__me__") {
+      filtered = filtered.filter((n) => n.user_name === userName);
+    } else if (filterUser) {
+      filtered = filtered.filter((n) => n.user_name === filterUser);
+    }
+
+    const term = search.toLowerCase().trim();
     if (term) {
-      filtered = notes.filter((note) => [
+      filtered = filtered.filter((note) => [
         note.title,
         note.description || "",
         note.store_name || "",
@@ -259,14 +272,22 @@ export default function CatatanPage() {
         break;
     }
     return sorted;
-  }, [notes, search, sortBy]);
+  }, [notes, search, sortBy, filterUser, userName]);
 
-  const activeCounts = {
-    all: notes.length,
-    pending: notes.filter((n) => n.status === "pending").length,
-    in_progress: notes.filter((n) => n.status === "in_progress").length,
-    completed: notes.filter((n) => n.status === "completed").length,
-  };
+  const activeCounts = useMemo(() => {
+    let base = notes;
+    if (filterUser === "__me__") {
+      base = base.filter((n) => n.user_name === userName);
+    } else if (filterUser) {
+      base = base.filter((n) => n.user_name === filterUser);
+    }
+    return {
+      all: base.length,
+      pending: base.filter((n) => n.status === "pending").length,
+      in_progress: base.filter((n) => n.status === "in_progress").length,
+      completed: base.filter((n) => n.status === "completed").length,
+    };
+  }, [notes, filterUser, userName]);
 
   const selectedSummary = summary.find((item) => item.month_key === selectedMonth);
   const selectionMode = selectedIds.size > 0;
@@ -446,23 +467,56 @@ export default function CatatanPage() {
             </div>
 
             {viewMode === "active" ? (
-              <div className="flex gap-2 overflow-x-auto pb-1">
-                {[
-                  { key: "all", label: "Semua" },
-                  { key: "pending", label: "Belum" },
-                  { key: "in_progress", label: "Proses" },
-                  { key: "completed", label: "Selesai" },
-                ].map((filter) => (
-                  <button
-                    key={filter.key}
-                    onClick={() => setFilterStatus(filter.key)}
-                    className={`px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition ${
-                      filterStatus === filter.key ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                    }`}
-                  >
-                    {filter.label} ({activeCounts[filter.key as keyof typeof activeCounts] || 0})
-                  </button>
-                ))}
+              <div className="space-y-2">
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {[
+                    { key: "all", label: "Semua" },
+                    { key: "pending", label: "Belum" },
+                    { key: "in_progress", label: "Proses" },
+                    { key: "completed", label: "Selesai" },
+                  ].map((filter) => (
+                    <button
+                      key={filter.key}
+                      onClick={() => setFilterStatus(filter.key)}
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium whitespace-nowrap transition ${
+                        filterStatus === filter.key ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+                      }`}
+                    >
+                      {filter.label} ({activeCounts[filter.key as keyof typeof activeCounts] || 0})
+                    </button>
+                  ))}
+                </div>
+                {isOwner && uniqueUsers.length > 1 && (
+                  <div className="flex gap-1.5 overflow-x-auto pb-1">
+                    <button
+                      onClick={() => setFilterUser("")}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap transition ${
+                        filterUser === "" ? "bg-purple-600 text-white" : "bg-purple-50 text-purple-600 hover:bg-purple-100"
+                      }`}
+                    >
+                      Semua User
+                    </button>
+                    <button
+                      onClick={() => setFilterUser("__me__")}
+                      className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap transition ${
+                        filterUser === "__me__" ? "bg-purple-600 text-white" : "bg-purple-50 text-purple-600 hover:bg-purple-100"
+                      }`}
+                    >
+                      Saya
+                    </button>
+                    {uniqueUsers.filter((u) => u !== userName).map((name) => (
+                      <button
+                        key={name}
+                        onClick={() => setFilterUser(filterUser === name ? "" : name)}
+                        className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap transition ${
+                          filterUser === name ? "bg-purple-600 text-white" : "bg-purple-50 text-purple-600 hover:bg-purple-100"
+                        }`}
+                      >
+                        {name}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-2">

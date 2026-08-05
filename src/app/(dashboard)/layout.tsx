@@ -172,12 +172,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ user_id: targetId }),
     });
-    loadSession();
-    router.refresh();
-    setTimeout(() => setSwitching(false), 800);
+    window.location.reload();
   }
 
-  const sessionValue = { userRole, userPermissions, sessionLoaded };
+  const sessionValue = { userRole, userName, userPermissions, sessionLoaded };
 
   return (
     <SessionProvider value={sessionValue}>

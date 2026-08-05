@@ -4,12 +4,14 @@ import { createContext, useContext } from "react";
 
 interface SessionContextValue {
   userRole: string;
+  userName: string;
   userPermissions: string[];
   sessionLoaded: boolean;
 }
 
 const SessionContext = createContext<SessionContextValue>({
   userRole: "",
+  userName: "",
   userPermissions: [],
   sessionLoaded: false,
 });
