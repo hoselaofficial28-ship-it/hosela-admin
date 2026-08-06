@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3, ClipboardEdit, History, LogOut, Menu, X,
   ListTodo, Settings, Bell, StickyNote, NotebookPen, UsersRound,
-  ArrowLeftRight, ChevronDown, Shield,
+  ArrowLeftRight, ChevronDown, Shield, FlaskConical,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { hasPermission, type FeatureKey } from "@/lib/permissions";
@@ -26,6 +26,7 @@ const allNavItems: NavItem[] = [
   { href: "/tasks", label: "Tugas", icon: ListTodo, feature: "tasks" },
   { href: "/catatan", label: "Catatan Kerja", icon: StickyNote, feature: "catatan" },
   { href: "/rapat", label: "Rapat", icon: NotebookPen, feature: "rapat" },
+  { href: "/lab-riset", label: "Lab Riset", icon: FlaskConical, feature: "lab_riset" },
   { href: "/users", label: "Users", icon: UsersRound, feature: "users" },
   { href: "/settings", label: "Pengaturan", icon: Settings, feature: "settings" },
 ];
@@ -37,6 +38,7 @@ const allBottomNavItems: NavItem[] = [
   { href: "/tasks", label: "Tugas", icon: ListTodo, feature: "tasks" },
   { href: "/catatan", label: "Catatan", icon: StickyNote, feature: "catatan" },
   { href: "/rapat", label: "Rapat", icon: NotebookPen, feature: "rapat" },
+  { href: "/lab-riset", label: "Lab", icon: FlaskConical, feature: "lab_riset" },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

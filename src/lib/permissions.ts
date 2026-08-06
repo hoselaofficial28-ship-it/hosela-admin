@@ -13,6 +13,7 @@ export const FEATURES = [
   { key: "tasks", label: "Tugas", href: "/tasks" },
   { key: "catatan", label: "Catatan Kerja", href: "/catatan" },
   { key: "rapat", label: "Rapat", href: "/rapat" },
+  { key: "lab_riset", label: "Lab Riset", href: "/lab-riset" },
   { key: "delete_history", label: "Hapus Riwayat", href: "" },
   { key: "settings", label: "Pengaturan", href: "/settings" },
   { key: "users", label: "Users", href: "/users" },
@@ -22,9 +23,9 @@ export type DepartmentKey = typeof DEPARTMENTS[number]["key"];
 export type FeatureKey = typeof FEATURES[number]["key"];
 
 export const DEFAULT_DEPARTMENT_PERMISSIONS: Record<string, FeatureKey[]> = {
-  admin_marketplace: ["dashboard", "input", "history", "catatan", "rapat"],
+  admin_marketplace: ["dashboard", "input", "history", "catatan", "rapat", "lab_riset"],
   admin_gudang: ["input", "history", "catatan", "rapat"],
-  kepala_gudang: ["dashboard", "history", "tasks", "catatan", "rapat"],
+  kepala_gudang: ["dashboard", "history", "tasks", "catatan", "rapat", "lab_riset"],
   host_live_streaming: ["catatan", "rapat", "tasks"],
   content_creator: ["catatan", "rapat", "tasks"],
 };

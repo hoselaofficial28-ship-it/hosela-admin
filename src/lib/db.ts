@@ -198,6 +198,28 @@ function initializeDatabase(db: Database.Database) {
       completed_at TEXT
     );
 
+    CREATE TABLE IF NOT EXISTS lab_riset (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      title TEXT NOT NULL,
+      hypothesis TEXT,
+      method TEXT,
+      result TEXT,
+      conclusion TEXT,
+      status TEXT DEFAULT 'planning' CHECK(status IN ('planning', 'running', 'completed')),
+      category TEXT DEFAULT 'other' CHECK(category IN ('ads', 'pricing', 'product', 'marketplace', 'content', 'other')),
+      store_id INTEGER REFERENCES stores(id),
+      cost TEXT,
+      start_date TEXT,
+      end_date TEXT,
+      tags TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_lab_riset_user ON lab_riset(user_id, status);
+    CREATE INDEX IF NOT EXISTS idx_lab_riset_category ON lab_riset(category);
+
     CREATE INDEX IF NOT EXISTS idx_shipments_date ON daily_shipments(date);
     CREATE INDEX IF NOT EXISTS idx_shipments_store ON daily_shipments(store_id);
     CREATE INDEX IF NOT EXISTS idx_express_shipments_date ON express_shipments(start_date, end_date);
