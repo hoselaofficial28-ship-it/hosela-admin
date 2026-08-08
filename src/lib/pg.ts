@@ -279,6 +279,11 @@ async function initializePostgres() {
     await pool.query(`ALTER TABLE hn_admin_notes ADD COLUMN task_id INTEGER REFERENCES hn_tasks(id) ON DELETE SET NULL`);
   }
 
+  await pool.query(`
+    UPDATE hn_user_permissions SET allowed = 1
+    WHERE feature = 'lab_riset' AND allowed = 0
+  `);
+
   const stores = await pool.query<{ count: string }>("SELECT COUNT(*) as count FROM hn_stores");
   if (Number(stores.rows[0]?.count || 0) === 0) {
     await pool.query(`

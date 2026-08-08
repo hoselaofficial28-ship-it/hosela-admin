@@ -24,10 +24,10 @@ export type FeatureKey = typeof FEATURES[number]["key"];
 
 export const DEFAULT_DEPARTMENT_PERMISSIONS: Record<string, FeatureKey[]> = {
   admin_marketplace: ["dashboard", "input", "history", "catatan", "rapat", "lab_riset"],
-  admin_gudang: ["input", "history", "catatan", "rapat"],
+  admin_gudang: ["input", "history", "catatan", "rapat", "lab_riset"],
   kepala_gudang: ["dashboard", "history", "tasks", "catatan", "rapat", "lab_riset"],
-  host_live_streaming: ["catatan", "rapat", "tasks"],
-  content_creator: ["catatan", "rapat", "tasks"],
+  host_live_streaming: ["catatan", "rapat", "tasks", "lab_riset"],
+  content_creator: ["catatan", "rapat", "tasks", "lab_riset"],
 };
 
 export function getDepartmentLabel(department?: string | null) {

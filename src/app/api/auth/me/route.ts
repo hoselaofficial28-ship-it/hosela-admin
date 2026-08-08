@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import jwt from "jsonwebtoken";
 import { getDb } from "@/lib/db";
-import { getSession, getUserPermissions, type SessionUser } from "@/lib/auth";
+import { getSession, getUserPermissions, createToken, COOKIE_NAME, type SessionUser } from "@/lib/auth";
 import { hasPostgres, pgOne, pgQuery } from "@/lib/pg";
+import { FEATURES } from "@/lib/permissions";
 
 const JWT_SECRET = process.env.JWT_SECRET || "hosela-admin-secret-key-2026";
 
@@ -46,11 +47,25 @@ export async function GET() {
       }
 
       const permissions = freshUser.role === "owner"
-        ? ["dashboard", "input", "history", "tasks", "catatan", "rapat", "settings", "users"]
+        ? FEATURES.map((f) => f.key)
         : (await pgQuery<{ feature: string }>(
           "SELECT feature FROM hn_user_permissions WHERE user_id = $1 AND allowed = 1",
           [freshUser.id]
         )).rows.map((permission) => permission.feature);
+
+      const currentPerms = (user.permissions || []).slice().sort().join(",");
+      const freshPerms = permissions.slice().sort().join(",");
+      if (currentPerms !== freshPerms) {
+        const newToken = createToken({ ...freshUser, permissions });
+        const cookieStore = await cookies();
+        cookieStore.set(COOKIE_NAME, newToken, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+          sameSite: "lax",
+          path: "/",
+          maxAge: 60 * 60 * 24 * 7,
+        });
+      }
 
       return NextResponse.json({ user: { ...freshUser, permissions }, switchedFrom });
     }
@@ -91,11 +106,26 @@ export async function GET() {
     if (freshUser.status !== "active") {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
+    const permissions = freshUser.role === "owner"
+      ? FEATURES.map((f) => f.key)
+      : getUserPermissions(freshUser.id);
+
+    const currentPerms = (user.permissions || []).slice().sort().join(",");
+    const freshPerms = permissions.slice().sort().join(",");
+    if (currentPerms !== freshPerms) {
+      const newToken = createToken({ ...freshUser, permissions });
+      const cookieStore = await cookies();
+      cookieStore.set(COOKIE_NAME, newToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7,
+      });
+    }
+
     return NextResponse.json({
-      user: {
-        ...freshUser,
-        permissions: freshUser.role === "owner" ? ["dashboard", "input", "history", "tasks", "catatan", "rapat", "settings", "users"] : getUserPermissions(freshUser.id),
-      },
+      user: { ...freshUser, permissions },
       switchedFrom,
     });
   }

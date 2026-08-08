@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import { getSession, createToken, COOKIE_NAME, type SessionUser } from "@/lib/auth";
 import { hasPostgres, pgQuery } from "@/lib/pg";
 import { getDb } from "@/lib/db";
+import { FEATURES } from "@/lib/permissions";
 
 const OWNER_COOKIE = "hosela_owner_session";
 const JWT_SECRET = process.env.JWT_SECRET || "hosela-admin-secret-key-2026";
@@ -66,7 +67,7 @@ export async function POST(req: NextRequest) {
       [u.id]
     );
     targetUser = { ...u, permissions: u.role === "owner"
-      ? ["dashboard", "input", "history", "tasks", "catatan", "rapat", "settings", "users"]
+      ? FEATURES.map((f) => f.key)
       : perms.rows.map((p) => p.feature) };
   } else {
     const db = getDb();
@@ -77,7 +78,7 @@ export async function POST(req: NextRequest) {
     const perms = db.prepare("SELECT feature FROM user_permissions WHERE user_id = ? AND allowed = 1")
       .all(u.id) as { feature: string }[];
     targetUser = { ...u, permissions: u.role === "owner"
-      ? ["dashboard", "input", "history", "tasks", "catatan", "rapat", "settings", "users"]
+      ? FEATURES.map((f) => f.key)
       : perms.map((p) => p.feature) };
   }
 
