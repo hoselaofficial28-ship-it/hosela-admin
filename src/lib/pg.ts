@@ -293,8 +293,12 @@ async function initializePostgres() {
       UNIQUE(user_id, week_start)
     );
 
+    ALTER TABLE hn_perfect_week ADD COLUMN IF NOT EXISTS week_start TEXT;
+    UPDATE hn_perfect_week SET week_start = to_char(date_trunc('week', now()) - interval '1 day', 'YYYY-MM-DD') WHERE week_start IS NULL;
+
     CREATE INDEX IF NOT EXISTS hn_idx_time_audit_user_date ON hn_time_audit(user_id, date);
     CREATE INDEX IF NOT EXISTS hn_idx_perfect_week_user ON hn_perfect_week(user_id);
+    CREATE INDEX IF NOT EXISTS hn_idx_perfect_week_user_week ON hn_perfect_week(user_id, week_start);
     CREATE INDEX IF NOT EXISTS hn_idx_weekly_review_user ON hn_weekly_review(user_id, week_start);
 
     CREATE INDEX IF NOT EXISTS hn_idx_shipments_date ON hn_daily_shipments(date);

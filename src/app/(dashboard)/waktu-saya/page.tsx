@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Plus, Timer, Trash2, Zap, ZapOff,
   CalendarDays, Target, BarChart3, FileText,
@@ -10,7 +10,7 @@ import {
   MessageCircle, Building2, NotebookPen,
   Dumbbell, Lightbulb, Home, Calendar, Rocket,
   Crosshair, Package, Calculator, Settings, Megaphone,
-  PenLine, Clock,
+  PenLine, Clock, Copy,
   type LucideIcon,
 } from "lucide-react";
 import Toast from "@/components/Toast";
@@ -32,6 +32,7 @@ interface WeekBlock {
   end_time: string;
   label: string;
   block_type: string;
+  week_start: string | null;
 }
 
 interface WeeklyReview {
@@ -117,6 +118,12 @@ function getWeekDates(offset: number): Date[] {
   });
 }
 
+function getWeekSunday(dateStr: string): string {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() - d.getDay());
+  return d.toISOString().split("T")[0];
+}
+
 function formatWeekRange(dates: Date[]): string {
   const first = dates[0];
   const last = dates[6];
@@ -124,6 +131,10 @@ function formatWeekRange(dates: Date[]): string {
     return `${first.getDate()} - ${last.getDate()} ${MONTHS[first.getMonth()]} ${first.getFullYear()}`;
   }
   return `${first.getDate()} ${MONTHS[first.getMonth()]} - ${last.getDate()} ${MONTHS[last.getMonth()]} ${last.getFullYear()}`;
+}
+
+function dateToStr(d: Date): string {
+  return d.toISOString().split("T")[0];
 }
 
 function isSameDay(a: Date, b: Date) {
@@ -138,7 +149,7 @@ export default function WaktuSayaPage() {
   // ── Audit state ──
   const [auditDate, setAuditDate] = useState(todayStr());
   const [entries, setEntries] = useState<AuditEntry[]>([]);
-  const [loadingAudit, setLoadingAudit] = useState(true);
+  const [loadingAudit, setLoadingAudit] = useState(false);
   const [showAuditForm, setShowAuditForm] = useState(false);
   const [editEntry, setEditEntry] = useState<AuditEntry | null>(null);
   const [auditForm, setAuditForm] = useState({ task_name: "", energy: "took" as "gave" | "took", value: "$" as string, notes: "" });
@@ -147,18 +158,19 @@ export default function WaktuSayaPage() {
 
   // ── Perfect Week state ──
   const [blocks, setBlocks] = useState<WeekBlock[]>([]);
-  const [loadingWeek, setLoadingWeek] = useState(true);
+  const [loadingWeek, setLoadingWeek] = useState(false);
   const [showBlockForm, setShowBlockForm] = useState(false);
   const [editBlock, setEditBlock] = useState<WeekBlock | null>(null);
   const [blockForm, setBlockForm] = useState({ day_of_week: 1, start_time: "09:00", end_time: "10:00", label: "", block_type: "focus" });
   const [savingBlock, setSavingBlock] = useState(false);
   const [weekOffset, setWeekOffset] = useState(0);
+  const [duplicating, setDuplicating] = useState(false);
 
   // ── Review state ──
   const [reviewWeek, setReviewWeek] = useState(getMonday(new Date()));
   const [review, setReview] = useState<WeeklyReview | null>(null);
   const [allReviews, setAllReviews] = useState<WeeklyReview[]>([]);
-  const [loadingReview, setLoadingReview] = useState(true);
+  const [loadingReview, setLoadingReview] = useState(false);
   const [savingReview, setSavingReview] = useState(false);
   const [reviewForm, setReviewForm] = useState({
     went_well: "", energy_drain: "", to_delegate: "", wins: "",
@@ -167,31 +179,48 @@ export default function WaktuSayaPage() {
 
   // ── DRIP stats ──
   const [dripData, setDripData] = useState<AuditEntry[]>([]);
+  const dripLoaded = useRef(false);
+
+  // ── Cache refs to avoid redundant fetches ──
+  const auditCache = useRef<string>("");
+  const weekCache = useRef<string>("");
+  const reviewCache = useRef<string>("");
 
   const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
+  const weekStart = useMemo(() => dateToStr(weekDates[0]), [weekDates]);
   const today = useMemo(() => new Date(), []);
+
+  const prevWeekDates = useMemo(() => getWeekDates(weekOffset - 1), [weekOffset]);
+  const prevWeekStart = useMemo(() => dateToStr(prevWeekDates[0]), [prevWeekDates]);
 
   // ── Fetch audit entries ──
   useEffect(() => {
     if (tab !== "audit") return;
+    const cacheKey = `audit:${auditDate}`;
+    if (auditCache.current === cacheKey) return;
+    auditCache.current = cacheKey;
     setLoadingAudit(true);
+
+    const auditWeekStart = getWeekSunday(auditDate);
+    const dayOfWeek = new Date(auditDate + "T00:00:00").getDay();
+
     Promise.all([
       fetch(`/api/waktu-saya/audit?date=${auditDate}`).then((r) => r.ok ? r.json() : []),
-      fetch("/api/waktu-saya/week").then((r) => r.ok ? r.json() : []),
+      fetch(`/api/waktu-saya/week?week_start=${auditWeekStart}`).then((r) => r.ok ? r.json() : []),
     ]).then(([auditData, weekData]) => {
       setEntries(Array.isArray(auditData) ? auditData : []);
-      const dayOfWeek = new Date(auditDate + "T00:00:00").getDay();
       const dayBlocks = (Array.isArray(weekData) ? weekData : [])
         .filter((b: WeekBlock) => b.day_of_week === dayOfWeek)
         .sort((a: WeekBlock, b: WeekBlock) => a.start_time.localeCompare(b.start_time));
       setPlannedBlocks(dayBlocks);
       setLoadingAudit(false);
-    }).catch(() => { setEntries([]); setPlannedBlocks([]); setLoadingAudit(false); });
+    }).catch(() => { setEntries([]); setPlannedBlocks([]); setLoadingAudit(false); auditCache.current = ""; });
   }, [auditDate, tab]);
 
-  // ── Fetch DRIP data ──
+  // ── Fetch DRIP data (once) ──
   useEffect(() => {
-    if (tab !== "audit") return;
+    if (tab !== "audit" || dripLoaded.current) return;
+    dripLoaded.current = true;
     const to = todayStr();
     const from = new Date(Date.now() - 13 * 86400000).toISOString().split("T")[0];
     fetch(`/api/waktu-saya/audit?from=${from}&to=${to}`)
@@ -203,16 +232,22 @@ export default function WaktuSayaPage() {
   // ── Fetch perfect week ──
   useEffect(() => {
     if (tab !== "week") return;
+    const cacheKey = `week:${weekStart}`;
+    if (weekCache.current === cacheKey) return;
+    weekCache.current = cacheKey;
     setLoadingWeek(true);
-    fetch("/api/waktu-saya/week")
+    fetch(`/api/waktu-saya/week?week_start=${weekStart}`)
       .then((r) => r.ok ? r.json() : [])
       .then((d) => { setBlocks(Array.isArray(d) ? d : []); setLoadingWeek(false); })
-      .catch(() => { setBlocks([]); setLoadingWeek(false); });
-  }, [tab]);
+      .catch(() => { setBlocks([]); setLoadingWeek(false); weekCache.current = ""; });
+  }, [tab, weekStart]);
 
   // ── Fetch review ──
   useEffect(() => {
     if (tab !== "review") return;
+    const cacheKey = `review:${reviewWeek}`;
+    if (reviewCache.current === cacheKey) return;
+    reviewCache.current = cacheKey;
     setLoadingReview(true);
     Promise.all([
       fetch(`/api/waktu-saya/review?week=${reviewWeek}`).then((r) => r.ok ? r.json() : null),
@@ -231,16 +266,17 @@ export default function WaktuSayaPage() {
         setReviewForm({ went_well: "", energy_drain: "", to_delegate: "", wins: "", energy_score: 5, focus_score: 5, notes: "" });
       }
       setLoadingReview(false);
-    }).catch(() => setLoadingReview(false));
+    }).catch(() => { setLoadingReview(false); reviewCache.current = ""; });
   }, [reviewWeek, tab]);
 
   const refreshAudit = useCallback(() => {
+    const auditWeekStart = getWeekSunday(auditDate);
+    const dayOfWeek = new Date(auditDate + "T00:00:00").getDay();
     Promise.all([
       fetch(`/api/waktu-saya/audit?date=${auditDate}`).then((r) => r.ok ? r.json() : []),
-      fetch("/api/waktu-saya/week").then((r) => r.ok ? r.json() : []),
+      fetch(`/api/waktu-saya/week?week_start=${auditWeekStart}`).then((r) => r.ok ? r.json() : []),
     ]).then(([auditData, weekData]) => {
       setEntries(Array.isArray(auditData) ? auditData : []);
-      const dayOfWeek = new Date(auditDate + "T00:00:00").getDay();
       setPlannedBlocks((Array.isArray(weekData) ? weekData : []).filter((b: WeekBlock) => b.day_of_week === dayOfWeek).sort((a: WeekBlock, b: WeekBlock) => a.start_time.localeCompare(b.start_time)));
     });
   }, [auditDate]);
@@ -271,7 +307,6 @@ export default function WaktuSayaPage() {
     const gave = entries.filter((e) => e.energy === "gave").length;
     const took = entries.filter((e) => e.energy === "took").length;
     const highVal = entries.filter((e) => e.value === "$$$" || e.value === "$$$$").length;
-    const lowVal = entries.filter((e) => e.value === "$" || e.value === "$$").length;
     const geniusZone = entries.filter((e) => e.energy === "gave" && (e.value === "$$$" || e.value === "$$$$")).length;
     const delegateZone = entries.filter((e) => e.energy === "took" && (e.value === "$" || e.value === "$$"));
     const total = entries.length;
@@ -295,7 +330,7 @@ export default function WaktuSayaPage() {
     else if (productivityScore >= 50) label = "Cukup baik";
     else if (productivityScore >= 30) label = "Perlu perbaikan";
 
-    return { gave, took, total, highVal, lowVal, geniusZone, delegateZone, energyRatio, productivityScore, label, planExecuted, plannedTotal: plannedBlocks.length, valDist };
+    return { gave, took, total, highVal, geniusZone, delegateZone, energyRatio, productivityScore, label, planExecuted, plannedTotal: plannedBlocks.length, valDist };
   }, [entries, plannedBlocks]);
 
   // ── Audit handlers ──
@@ -314,7 +349,7 @@ export default function WaktuSayaPage() {
       const url = editEntry ? `/api/waktu-saya/audit/${editEntry.id}` : "/api/waktu-saya/audit";
       const method = editEntry ? "PUT" : "POST";
       const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (res.ok) { setToast({ message: "Tersimpan", type: "success" }); resetAuditForm(); refreshAudit(); }
+      if (res.ok) { setToast({ message: "Tersimpan", type: "success" }); resetAuditForm(); auditCache.current = ""; refreshAudit(); }
       else setToast({ message: "Gagal menyimpan", type: "error" });
     } finally { setSavingAudit(false); }
   }
@@ -325,7 +360,7 @@ export default function WaktuSayaPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ task_name: block.label, energy, value, date: auditDate, notes: `${block.start_time}–${block.end_time}` }),
     });
-    if (res.ok) { setToast({ message: "Tersimpan", type: "success" }); refreshAudit(); }
+    if (res.ok) { setToast({ message: "Tersimpan", type: "success" }); auditCache.current = ""; refreshAudit(); }
     else setToast({ message: "Gagal menyimpan", type: "error" });
   }
 
@@ -333,6 +368,7 @@ export default function WaktuSayaPage() {
     setEntries((prev) => prev.filter((e) => e.id !== id));
     setToast({ message: "Dihapus", type: "success" });
     await fetch(`/api/waktu-saya/audit/${id}`, { method: "DELETE" });
+    auditCache.current = "";
     refreshAudit();
   }
 
@@ -344,7 +380,7 @@ export default function WaktuSayaPage() {
   }
 
   function refreshWeek() {
-    fetch("/api/waktu-saya/week").then((r) => r.ok ? r.json() : []).then((d) => setBlocks(Array.isArray(d) ? d : []));
+    fetch(`/api/waktu-saya/week?week_start=${weekStart}`).then((r) => r.ok ? r.json() : []).then((d) => setBlocks(Array.isArray(d) ? d : []));
   }
 
   async function saveBlock() {
@@ -352,10 +388,11 @@ export default function WaktuSayaPage() {
     if (savingBlock) return;
     setSavingBlock(true);
     try {
+      const body = { ...blockForm, week_start: weekStart };
       const url = editBlock ? `/api/waktu-saya/week/${editBlock.id}` : "/api/waktu-saya/week";
       const method = editBlock ? "PUT" : "POST";
-      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(blockForm) });
-      if (res.ok) { setToast({ message: "Tersimpan", type: "success" }); resetBlockForm(); refreshWeek(); }
+      const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (res.ok) { setToast({ message: "Tersimpan", type: "success" }); resetBlockForm(); weekCache.current = ""; refreshWeek(); }
       else setToast({ message: "Gagal menyimpan", type: "error" });
     } finally { setSavingBlock(false); }
   }
@@ -364,7 +401,28 @@ export default function WaktuSayaPage() {
     setBlocks((prev) => prev.filter((b) => b.id !== id));
     setToast({ message: "Blok dihapus", type: "success" });
     await fetch(`/api/waktu-saya/week/${id}`, { method: "DELETE" });
+    weekCache.current = "";
     refreshWeek();
+  }
+
+  async function duplicateWeek() {
+    if (duplicating) return;
+    setDuplicating(true);
+    try {
+      const res = await fetch("/api/waktu-saya/week/duplicate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ source_week: prevWeekStart, target_week: weekStart }),
+      });
+      if (res.ok) {
+        setToast({ message: "Blok minggu sebelumnya berhasil diduplikasi", type: "success" });
+        weekCache.current = "";
+        refreshWeek();
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setToast({ message: data.error || "Gagal menduplikasi", type: "error" });
+      }
+    } finally { setDuplicating(false); }
   }
 
   // ── Review handler ──
@@ -378,6 +436,7 @@ export default function WaktuSayaPage() {
       });
       if (res.ok) {
         setToast({ message: "Review tersimpan", type: "success" });
+        reviewCache.current = "";
         const updated = await fetch(`/api/waktu-saya/review?week=${reviewWeek}`).then((r) => r.ok ? r.json() : null);
         setReview(updated);
       } else setToast({ message: "Gagal menyimpan", type: "error" });
@@ -700,7 +759,14 @@ export default function WaktuSayaPage() {
             </button>
           </div>
 
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            {blocks.length === 0 && (
+              <button onClick={duplicateWeek} disabled={duplicating}
+                className="inline-flex items-center gap-1.5 px-4 py-2 border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 disabled:opacity-60 transition">
+                {duplicating ? <span className="w-4 h-4 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" /> : <Copy className="w-4 h-4" />}
+                {duplicating ? "Menduplikasi..." : "Duplikasi minggu sebelumnya"}
+              </button>
+            )}
             <button onClick={() => { setShowBlockForm(true); setEditBlock(null); setBlockForm({ day_of_week: 1, start_time: "09:00", end_time: "10:00", label: "", block_type: "focus" }); }}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition">
               <Plus className="w-4 h-4" />Tambah Blok

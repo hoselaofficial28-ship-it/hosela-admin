@@ -262,6 +262,7 @@ function initializeDatabase(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_time_audit_user_date ON time_audit(user_id, date);
     CREATE INDEX IF NOT EXISTS idx_perfect_week_user ON perfect_week(user_id);
+    CREATE INDEX IF NOT EXISTS idx_perfect_week_user_week ON perfect_week(user_id, week_start);
     CREATE INDEX IF NOT EXISTS idx_weekly_review_user ON weekly_review(user_id, week_start);
 
     CREATE INDEX IF NOT EXISTS idx_shipments_date ON daily_shipments(date);
@@ -347,6 +348,13 @@ function migrateDatabase(db: Database.Database) {
   const noteColumnNames = new Set(noteColumns.map((column) => column.name));
   if (!noteColumnNames.has("task_id")) {
     db.exec("ALTER TABLE admin_notes ADD COLUMN task_id INTEGER REFERENCES tasks(id)");
+  }
+
+  const weekColumns = db.prepare("PRAGMA table_info(perfect_week)").all() as { name: string }[];
+  const weekColumnNames = new Set(weekColumns.map((column) => column.name));
+  if (!weekColumnNames.has("week_start")) {
+    db.exec("ALTER TABLE perfect_week ADD COLUMN week_start TEXT");
+    db.exec("UPDATE perfect_week SET week_start = date('now', '-' || strftime('%w', 'now') || ' days') WHERE week_start IS NULL");
   }
 }
 
