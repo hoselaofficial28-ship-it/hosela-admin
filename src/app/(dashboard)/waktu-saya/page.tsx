@@ -5,6 +5,13 @@ import {
   Plus, Timer, Trash2, Zap, ZapOff, DollarSign,
   CalendarDays, Target, BarChart3, FileText,
   ChevronLeft, ChevronRight, Pencil,
+  Brain, Users, Heart, Clipboard, RefreshCw, Shuffle,
+  Sun, Moon, Mail, Coffee, Briefcase, ListChecks,
+  MessageCircle, Building2, ChefHat, NotebookPen,
+  Dumbbell, Lightbulb, Home, Calendar, Rocket,
+  Crosshair, Package, Calculator, Settings, Megaphone,
+  PenLine, Clock,
+  type LucideIcon,
 } from "lucide-react";
 import Toast from "@/components/Toast";
 import { useSession } from "@/lib/session-context";
@@ -45,14 +52,32 @@ const DAYS = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 const DAYS_SHORT = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 6);
 
-const BLOCK_TYPES: Record<string, { label: string; color: string; bg: string }> = {
-  focus: { label: "Focus Time", color: "text-blue-700", bg: "bg-blue-100 border-blue-300" },
-  meeting: { label: "Meeting", color: "text-purple-700", bg: "bg-purple-100 border-purple-300" },
-  personal: { label: "Personal", color: "text-green-700", bg: "bg-green-100 border-green-300" },
-  admin: { label: "Admin", color: "text-orange-700", bg: "bg-orange-100 border-orange-300" },
-  flex: { label: "Flex Time", color: "text-gray-700", bg: "bg-gray-100 border-gray-300" },
-  routine: { label: "Routine", color: "text-teal-700", bg: "bg-teal-100 border-teal-300" },
+const BLOCK_TYPES: Record<string, { label: string; icon: LucideIcon; color: string; text: string; bg: string; border: string; accent: string }> = {
+  focus:    { label: "Focus Time", icon: Brain,     color: "bg-blue-50",   text: "text-blue-800",   bg: "bg-blue-100",   border: "border-blue-300",   accent: "bg-blue-400" },
+  meeting:  { label: "Meeting",    icon: Users,     color: "bg-purple-50", text: "text-purple-800", bg: "bg-purple-100", border: "border-purple-300", accent: "bg-purple-400" },
+  personal: { label: "Personal",   icon: Heart,     color: "bg-green-50",  text: "text-green-800",  bg: "bg-green-100",  border: "border-green-300",  accent: "bg-green-400" },
+  admin:    { label: "Admin",      icon: Clipboard, color: "bg-amber-50",  text: "text-amber-800",  bg: "bg-amber-100",  border: "border-amber-300",  accent: "bg-amber-400" },
+  flex:     { label: "Flex Time",  icon: Shuffle,   color: "bg-gray-50",   text: "text-gray-700",   bg: "bg-gray-100",   border: "border-gray-300",   accent: "bg-gray-400" },
+  routine:  { label: "Routine",    icon: RefreshCw, color: "bg-orange-50", text: "text-orange-800", bg: "bg-orange-100", border: "border-orange-300", accent: "bg-orange-400" },
 };
+
+const LABEL_ICONS: Record<string, LucideIcon> = {
+  "deep work": Brain, "strategi": Crosshair, "produk": Package, "marketing": Megaphone,
+  "konten": PenLine, "keuangan": Calculator, "operasional": Settings, "inovasi": Lightbulb,
+  "riset": Crosshair, "proyek": Rocket, "standup": Users, "meeting": Users, "1-on-1": MessageCircle,
+  "vendor": Building2, "partner": Briefcase, "email": Mail, "admin": Clipboard, "review": ListChecks,
+  "planning": Calendar, "closing": ListChecks, "refleksi": NotebookPen, "morning": Sun,
+  "persiapan": Moon, "istirahat": Coffee, "makan": Coffee, "sarapan": Coffee,
+  "gym": Dumbbell, "olahraga": Dumbbell, "keluarga": Home, "pribadi": Lightbulb, "flex": Shuffle,
+};
+
+function getBlockIcon(label: string, blockType: string): LucideIcon {
+  const lower = label.toLowerCase();
+  for (const [keyword, icon] of Object.entries(LABEL_ICONS)) {
+    if (lower.includes(keyword)) return icon;
+  }
+  return BLOCK_TYPES[blockType]?.icon || Clock;
+}
 
 const VALUE_OPTIONS = [
   { key: "$", label: "$", desc: "Siapa saja bisa" },
@@ -514,54 +539,101 @@ export default function WaktuSayaPage() {
             <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
               <div className="w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin mx-auto mb-2" />
             </div>
-          ) : blocks.length === 0 ? (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
-              <CalendarDays className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-              <p className="text-gray-400">Belum ada blok waktu</p>
-              <p className="text-xs text-gray-300 mt-1">Desain minggu ideal kamu — kapan focus, kapan meeting, kapan istirahat</p>
-            </div>
           ) : (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-x-auto">
-              <div className="min-w-[700px]">
-                {/* Header */}
-                <div className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-gray-100">
-                  <div className="p-2" />
-                  {DAYS_SHORT.map((d, i) => (
-                    <div key={i} className="p-2 text-center text-xs font-semibold text-gray-500 border-l border-gray-100">{d}</div>
-                  ))}
-                </div>
-                {/* Hours */}
-                {HOURS.map((hour) => (
-                  <div key={hour} className="grid grid-cols-[60px_repeat(7,1fr)] border-b border-gray-50 min-h-[40px]">
-                    <div className="p-1 text-[10px] text-gray-400 text-right pr-2 pt-1">{`${hour}:00`}</div>
-                    {Array.from({ length: 7 }, (_, dayIdx) => {
-                      const dayBlocks = blocks.filter((b) => {
-                        if (b.day_of_week !== dayIdx) return false;
-                        const startH = parseInt(b.start_time.split(":")[0]);
-                        const endH = parseInt(b.end_time.split(":")[0]);
-                        return hour >= startH && hour < endH;
-                      });
-                      const isStart = dayBlocks.some((b) => parseInt(b.start_time.split(":")[0]) === hour);
-                      const block = dayBlocks[0];
-                      if (!block) return <div key={dayIdx} className="border-l border-gray-50 min-h-[40px]" />;
-                      const bt = BLOCK_TYPES[block.block_type] || BLOCK_TYPES.flex;
-                      if (!isStart) return <div key={dayIdx} className={`border-l border-gray-50 min-h-[40px] ${bt.bg} border`} />;
-                      return (
-                        <div key={dayIdx} className={`border-l border-gray-50 min-h-[40px] ${bt.bg} border p-1 relative group cursor-pointer`}
-                          onClick={() => { setEditBlock(block); setBlockForm({ day_of_week: block.day_of_week, start_time: block.start_time, end_time: block.end_time, label: block.label, block_type: block.block_type }); setShowBlockForm(true); }}>
-                          <div className={`text-[10px] font-semibold ${bt.color} leading-tight`}>{block.label}</div>
-                          <div className="text-[9px] text-gray-400">{block.start_time}-{block.end_time}</div>
-                          <button onClick={(ev) => { ev.stopPropagation(); deleteBlock(block.id); }}
-                            className="absolute top-0.5 right-0.5 hidden group-hover:block p-0.5 bg-white rounded shadow-sm">
-                            <Trash2 className="w-3 h-3 text-red-400" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                ))}
+            <>
+              <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-x-auto">
+                <table className="w-full border-collapse" style={{ minWidth: 700 }}>
+                  <thead>
+                    <tr>
+                      <th className="w-[52px] p-2 text-right text-[10px] text-gray-400 border-b border-gray-200 border-r border-r-gray-200" />
+                      {DAYS_SHORT.map((d, i) => (
+                        <th key={i} className="p-2 text-center text-xs font-semibold text-gray-500 border-b border-gray-200 border-r border-r-gray-100 last:border-r-0">{d}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {HOURS.map((hour) => (
+                      <tr key={hour} className="border-b border-gray-50">
+                        <td className="text-right pr-2 pt-1 text-[10px] text-gray-400 border-r border-r-gray-200 align-top w-[52px]">
+                          {`${String(hour).padStart(2, "0")}:00`}
+                        </td>
+                        {Array.from({ length: 7 }, (_, dayIdx) => {
+                          const dayBlocks = blocks.filter((b) => {
+                            if (b.day_of_week !== dayIdx) return false;
+                            const startH = parseInt(b.start_time.split(":")[0]);
+                            const endH = parseInt(b.end_time.split(":")[0]);
+                            return hour >= startH && hour < endH;
+                          });
+                          const isStart = dayBlocks.some((b) => parseInt(b.start_time.split(":")[0]) === hour);
+                          const block = dayBlocks[0];
+
+                          if (!block) {
+                            return (
+                              <td key={dayIdx} className="border-r border-r-gray-50 last:border-r-0 h-[40px] hover:bg-gray-50 cursor-pointer transition-colors"
+                                onClick={() => {
+                                  setEditBlock(null);
+                                  setBlockForm({ day_of_week: dayIdx, start_time: `${String(hour).padStart(2, "0")}:00`, end_time: `${String(hour + 1).padStart(2, "0")}:00`, label: "", block_type: "focus" });
+                                  setShowBlockForm(true);
+                                }} />
+                            );
+                          }
+
+                          const bt = BLOCK_TYPES[block.block_type] || BLOCK_TYPES.flex;
+                          if (!isStart) {
+                            return <td key={dayIdx} className={`border-r border-r-gray-50 last:border-r-0 h-[40px] ${bt.color}`} />;
+                          }
+
+                          const spanHours = parseInt(block.end_time.split(":")[0]) - parseInt(block.start_time.split(":")[0]);
+                          const BlockIcon = getBlockIcon(block.label, block.block_type);
+
+                          return (
+                            <td key={dayIdx} className={`border-r border-r-gray-50 last:border-r-0 h-[40px] ${bt.color} relative group cursor-pointer`}
+                              rowSpan={spanHours > 1 ? spanHours : undefined}
+                              onClick={() => { setEditBlock(block); setBlockForm({ day_of_week: block.day_of_week, start_time: block.start_time, end_time: block.end_time, label: block.label, block_type: block.block_type }); setShowBlockForm(true); }}>
+                              <div className={`absolute inset-[2px] rounded ${bt.bg} ${bt.border} border-l-[3px] p-1.5 flex gap-1.5 items-start overflow-hidden`}>
+                                <div className={`w-5 h-5 rounded flex items-center justify-center shrink-0 ${bt.accent}`}>
+                                  <BlockIcon className="w-3 h-3 text-white" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <div className={`text-[11px] font-semibold ${bt.text} leading-tight truncate`}>{block.label}</div>
+                                  <div className="text-[9px] text-gray-400 mt-0.5">{block.start_time}–{block.end_time}</div>
+                                </div>
+                              </div>
+                              <button onClick={(ev) => { ev.stopPropagation(); deleteBlock(block.id); }}
+                                className="absolute top-1 right-1 hidden group-hover:flex w-5 h-5 items-center justify-center bg-white rounded shadow-sm z-10">
+                                <Trash2 className="w-3 h-3 text-red-400" />
+                              </button>
+                            </td>
+                          );
+                        })}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            </div>
+
+              {/* Legend */}
+              <div className="flex flex-wrap gap-3">
+                {Object.entries(BLOCK_TYPES).map(([key, bt]) => {
+                  const Icon = bt.icon;
+                  return (
+                    <div key={key} className="flex items-center gap-1.5 text-xs text-gray-600">
+                      <div className={`w-5 h-5 rounded flex items-center justify-center ${bt.accent}`}>
+                        <Icon className="w-3 h-3 text-white" />
+                      </div>
+                      {bt.label}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {blocks.length === 0 && (
+                <div className="text-center py-4">
+                  <CalendarDays className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                  <p className="text-sm text-gray-400">Klik cell kosong di grid untuk mulai mendesain minggu ideal kamu</p>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
