@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3, ClipboardEdit, History, LogOut, Menu, X,
   ListTodo, Settings, Bell, StickyNote, NotebookPen, UsersRound,
-  ArrowLeftRight, ChevronDown, Shield, FlaskConical,
+  ArrowLeftRight, ChevronDown, Shield, FlaskConical, Timer,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { hasPermission, type FeatureKey } from "@/lib/permissions";
@@ -27,6 +27,7 @@ const allNavItems: NavItem[] = [
   { href: "/catatan", label: "Catatan Kerja", icon: StickyNote, feature: "catatan" },
   { href: "/rapat", label: "Rapat", icon: NotebookPen, feature: "rapat" },
   { href: "/lab-riset", label: "Lab Riset", icon: FlaskConical, feature: "lab_riset" },
+  { href: "/waktu-saya", label: "Waktu Saya", icon: Timer, feature: "waktu_saya" },
   { href: "/users", label: "Users", icon: UsersRound, feature: "users" },
   { href: "/settings", label: "Pengaturan", icon: Settings, feature: "settings" },
 ];

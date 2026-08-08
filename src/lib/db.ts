@@ -220,6 +220,50 @@ function initializeDatabase(db: Database.Database) {
     CREATE INDEX IF NOT EXISTS idx_lab_riset_user ON lab_riset(user_id, status);
     CREATE INDEX IF NOT EXISTS idx_lab_riset_category ON lab_riset(category);
 
+    CREATE TABLE IF NOT EXISTS time_audit (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      date TEXT NOT NULL,
+      task_name TEXT NOT NULL,
+      energy TEXT NOT NULL CHECK(energy IN ('gave', 'took')),
+      value TEXT NOT NULL DEFAULT '$' CHECK(value IN ('$', '$$', '$$$', '$$$$')),
+      notes TEXT,
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS perfect_week (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      day_of_week INTEGER NOT NULL CHECK(day_of_week >= 0 AND day_of_week <= 6),
+      start_time TEXT NOT NULL,
+      end_time TEXT NOT NULL,
+      label TEXT NOT NULL,
+      block_type TEXT NOT NULL DEFAULT 'focus' CHECK(block_type IN ('focus', 'meeting', 'personal', 'admin', 'flex', 'routine')),
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS weekly_review (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      week_start TEXT NOT NULL,
+      went_well TEXT,
+      energy_drain TEXT,
+      to_delegate TEXT,
+      wins TEXT,
+      energy_score INTEGER CHECK(energy_score >= 1 AND energy_score <= 10),
+      focus_score INTEGER CHECK(focus_score >= 1 AND focus_score <= 10),
+      notes TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      updated_at TEXT DEFAULT (datetime('now')),
+      UNIQUE(user_id, week_start)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_time_audit_user_date ON time_audit(user_id, date);
+    CREATE INDEX IF NOT EXISTS idx_perfect_week_user ON perfect_week(user_id);
+    CREATE INDEX IF NOT EXISTS idx_weekly_review_user ON weekly_review(user_id, week_start);
+
     CREATE INDEX IF NOT EXISTS idx_shipments_date ON daily_shipments(date);
     CREATE INDEX IF NOT EXISTS idx_shipments_store ON daily_shipments(store_id);
     CREATE INDEX IF NOT EXISTS idx_express_shipments_date ON express_shipments(start_date, end_date);

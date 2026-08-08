@@ -14,6 +14,7 @@ export const FEATURES = [
   { key: "catatan", label: "Catatan Kerja", href: "/catatan" },
   { key: "rapat", label: "Rapat", href: "/rapat" },
   { key: "lab_riset", label: "Lab Riset", href: "/lab-riset" },
+  { key: "waktu_saya", label: "Waktu Saya", href: "/waktu-saya" },
   { key: "delete_history", label: "Hapus Riwayat", href: "" },
   { key: "settings", label: "Pengaturan", href: "/settings" },
   { key: "users", label: "Users", href: "/users" },

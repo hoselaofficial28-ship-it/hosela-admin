@@ -253,6 +253,50 @@ async function initializePostgres() {
     CREATE INDEX IF NOT EXISTS hn_idx_lab_riset_user ON hn_lab_riset(user_id, status);
     CREATE INDEX IF NOT EXISTS hn_idx_lab_riset_category ON hn_lab_riset(category);
 
+    CREATE TABLE IF NOT EXISTS hn_time_audit (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES hn_users(id),
+      date TEXT NOT NULL,
+      task_name TEXT NOT NULL,
+      energy TEXT NOT NULL CHECK(energy IN ('gave', 'took')),
+      value TEXT NOT NULL DEFAULT '$' CHECK(value IN ('$', '$$', '$$$', '$$$$')),
+      notes TEXT,
+      sort_order INTEGER DEFAULT 0,
+      created_at TIMESTAMPTZ DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS hn_perfect_week (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES hn_users(id),
+      day_of_week INTEGER NOT NULL CHECK(day_of_week >= 0 AND day_of_week <= 6),
+      start_time TEXT NOT NULL,
+      end_time TEXT NOT NULL,
+      label TEXT NOT NULL,
+      block_type TEXT NOT NULL DEFAULT 'focus' CHECK(block_type IN ('focus', 'meeting', 'personal', 'admin', 'flex', 'routine')),
+      created_at TIMESTAMPTZ DEFAULT now(),
+      updated_at TIMESTAMPTZ DEFAULT now()
+    );
+
+    CREATE TABLE IF NOT EXISTS hn_weekly_review (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES hn_users(id),
+      week_start TEXT NOT NULL,
+      went_well TEXT,
+      energy_drain TEXT,
+      to_delegate TEXT,
+      wins TEXT,
+      energy_score INTEGER CHECK(energy_score >= 1 AND energy_score <= 10),
+      focus_score INTEGER CHECK(focus_score >= 1 AND focus_score <= 10),
+      notes TEXT,
+      created_at TIMESTAMPTZ DEFAULT now(),
+      updated_at TIMESTAMPTZ DEFAULT now(),
+      UNIQUE(user_id, week_start)
+    );
+
+    CREATE INDEX IF NOT EXISTS hn_idx_time_audit_user_date ON hn_time_audit(user_id, date);
+    CREATE INDEX IF NOT EXISTS hn_idx_perfect_week_user ON hn_perfect_week(user_id);
+    CREATE INDEX IF NOT EXISTS hn_idx_weekly_review_user ON hn_weekly_review(user_id, week_start);
+
     CREATE INDEX IF NOT EXISTS hn_idx_shipments_date ON hn_daily_shipments(date);
     CREATE INDEX IF NOT EXISTS hn_idx_shipments_store ON hn_daily_shipments(store_id);
     CREATE INDEX IF NOT EXISTS hn_idx_express_shipments_date ON hn_express_shipments(start_date, end_date);
