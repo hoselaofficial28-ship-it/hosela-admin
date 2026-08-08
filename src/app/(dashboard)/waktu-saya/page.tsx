@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  Plus, Timer, Trash2, Zap, ZapOff, DollarSign,
+  Plus, Timer, Trash2, Zap, ZapOff,
   CalendarDays, Target, BarChart3, FileText,
-  ChevronLeft, ChevronRight, Pencil,
+  ChevronLeft, ChevronRight, Pencil, AlertTriangle, Trophy,
   Brain, Users, Heart, Clipboard, RefreshCw, Shuffle,
   Sun, Moon, Mail, Coffee, Briefcase, ListChecks,
-  MessageCircle, Building2, ChefHat, NotebookPen,
+  MessageCircle, Building2, NotebookPen,
   Dumbbell, Lightbulb, Home, Calendar, Rocket,
   Crosshair, Package, Calculator, Settings, Megaphone,
   PenLine, Clock,
@@ -50,6 +50,7 @@ type Tab = "audit" | "week" | "review";
 
 const DAYS = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
 const DAYS_SHORT = ["Min", "Sen", "Sel", "Rab", "Kam", "Jum", "Sab"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun", "Jul", "Agt", "Sep", "Okt", "Nov", "Des"];
 const HOURS = Array.from({ length: 18 }, (_, i) => i + 6);
 
 const BLOCK_TYPES: Record<string, { label: string; icon: LucideIcon; color: string; text: string; bg: string; border: string; accent: string }> = {
@@ -103,6 +104,32 @@ function formatDateId(dateStr: string) {
   return d.toLocaleDateString("id-ID", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 }
 
+function getWeekDates(offset: number): Date[] {
+  const now = new Date();
+  const day = now.getDay();
+  const diffToSunday = -day;
+  const sunday = new Date(now);
+  sunday.setDate(now.getDate() + diffToSunday + offset * 7);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(sunday);
+    d.setDate(sunday.getDate() + i);
+    return d;
+  });
+}
+
+function formatWeekRange(dates: Date[]): string {
+  const first = dates[0];
+  const last = dates[6];
+  if (first.getMonth() === last.getMonth()) {
+    return `${first.getDate()} - ${last.getDate()} ${MONTHS[first.getMonth()]} ${first.getFullYear()}`;
+  }
+  return `${first.getDate()} ${MONTHS[first.getMonth()]} - ${last.getDate()} ${MONTHS[last.getMonth()]} ${last.getFullYear()}`;
+}
+
+function isSameDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
 export default function WaktuSayaPage() {
   const { sessionLoaded } = useSession();
   const [tab, setTab] = useState<Tab>("audit");
@@ -116,6 +143,7 @@ export default function WaktuSayaPage() {
   const [editEntry, setEditEntry] = useState<AuditEntry | null>(null);
   const [auditForm, setAuditForm] = useState({ task_name: "", energy: "took" as "gave" | "took", value: "$" as string, notes: "" });
   const [savingAudit, setSavingAudit] = useState(false);
+  const [plannedBlocks, setPlannedBlocks] = useState<WeekBlock[]>([]);
 
   // ── Perfect Week state ──
   const [blocks, setBlocks] = useState<WeekBlock[]>([]);
@@ -124,6 +152,7 @@ export default function WaktuSayaPage() {
   const [editBlock, setEditBlock] = useState<WeekBlock | null>(null);
   const [blockForm, setBlockForm] = useState({ day_of_week: 1, start_time: "09:00", end_time: "10:00", label: "", block_type: "focus" });
   const [savingBlock, setSavingBlock] = useState(false);
+  const [weekOffset, setWeekOffset] = useState(0);
 
   // ── Review state ──
   const [reviewWeek, setReviewWeek] = useState(getMonday(new Date()));
@@ -136,20 +165,31 @@ export default function WaktuSayaPage() {
     energy_score: 5, focus_score: 5, notes: "",
   });
 
-  // ── DRIP stats from audit data (last 14 days) ──
+  // ── DRIP stats ──
   const [dripData, setDripData] = useState<AuditEntry[]>([]);
+
+  const weekDates = useMemo(() => getWeekDates(weekOffset), [weekOffset]);
+  const today = useMemo(() => new Date(), []);
 
   // ── Fetch audit entries ──
   useEffect(() => {
     if (tab !== "audit") return;
     setLoadingAudit(true);
-    fetch(`/api/waktu-saya/audit?date=${auditDate}`)
-      .then((r) => r.ok ? r.json() : [])
-      .then((d) => { setEntries(Array.isArray(d) ? d : []); setLoadingAudit(false); })
-      .catch(() => { setEntries([]); setLoadingAudit(false); });
+    Promise.all([
+      fetch(`/api/waktu-saya/audit?date=${auditDate}`).then((r) => r.ok ? r.json() : []),
+      fetch("/api/waktu-saya/week").then((r) => r.ok ? r.json() : []),
+    ]).then(([auditData, weekData]) => {
+      setEntries(Array.isArray(auditData) ? auditData : []);
+      const dayOfWeek = new Date(auditDate + "T00:00:00").getDay();
+      const dayBlocks = (Array.isArray(weekData) ? weekData : [])
+        .filter((b: WeekBlock) => b.day_of_week === dayOfWeek)
+        .sort((a: WeekBlock, b: WeekBlock) => a.start_time.localeCompare(b.start_time));
+      setPlannedBlocks(dayBlocks);
+      setLoadingAudit(false);
+    }).catch(() => { setEntries([]); setPlannedBlocks([]); setLoadingAudit(false); });
   }, [auditDate, tab]);
 
-  // ── Fetch DRIP data (last 14 days) ──
+  // ── Fetch DRIP data ──
   useEffect(() => {
     if (tab !== "audit") return;
     const to = todayStr();
@@ -194,11 +234,22 @@ export default function WaktuSayaPage() {
     }).catch(() => setLoadingReview(false));
   }, [reviewWeek, tab]);
 
-  function refreshAudit() {
-    fetch(`/api/waktu-saya/audit?date=${auditDate}`)
-      .then((r) => r.ok ? r.json() : [])
-      .then((d) => setEntries(Array.isArray(d) ? d : []));
-  }
+  const refreshAudit = useCallback(() => {
+    Promise.all([
+      fetch(`/api/waktu-saya/audit?date=${auditDate}`).then((r) => r.ok ? r.json() : []),
+      fetch("/api/waktu-saya/week").then((r) => r.ok ? r.json() : []),
+    ]).then(([auditData, weekData]) => {
+      setEntries(Array.isArray(auditData) ? auditData : []);
+      const dayOfWeek = new Date(auditDate + "T00:00:00").getDay();
+      setPlannedBlocks((Array.isArray(weekData) ? weekData : []).filter((b: WeekBlock) => b.day_of_week === dayOfWeek).sort((a: WeekBlock, b: WeekBlock) => a.start_time.localeCompare(b.start_time)));
+    });
+  }, [auditDate]);
+
+  // ── Planned blocks not yet audited ──
+  const unauditedBlocks = useMemo(() => {
+    const auditedNames = new Set(entries.map((e) => e.task_name.toLowerCase()));
+    return plannedBlocks.filter((b) => !auditedNames.has(b.label.toLowerCase()));
+  }, [plannedBlocks, entries]);
 
   // ── DRIP Matrix ──
   const drip = useMemo(() => {
@@ -213,6 +264,39 @@ export default function WaktuSayaPage() {
     }
     return d;
   }, [dripData]);
+
+  // ── Daily analysis ──
+  const analysis = useMemo(() => {
+    if (entries.length === 0) return null;
+    const gave = entries.filter((e) => e.energy === "gave").length;
+    const took = entries.filter((e) => e.energy === "took").length;
+    const highVal = entries.filter((e) => e.value === "$$$" || e.value === "$$$$").length;
+    const lowVal = entries.filter((e) => e.value === "$" || e.value === "$$").length;
+    const geniusZone = entries.filter((e) => e.energy === "gave" && (e.value === "$$$" || e.value === "$$$$")).length;
+    const delegateZone = entries.filter((e) => e.energy === "took" && (e.value === "$" || e.value === "$$"));
+    const total = entries.length;
+
+    const energyRatio = Math.round((gave / total) * 100);
+    const valueScore = Math.round((highVal / total) * 100);
+    const productivityScore = Math.round((energyRatio * 0.4 + valueScore * 0.4 + (geniusZone / total) * 100 * 0.2));
+    const planExecuted = plannedBlocks.length > 0
+      ? plannedBlocks.filter((b) => entries.some((e) => e.task_name.toLowerCase() === b.label.toLowerCase())).length
+      : 0;
+
+    const valDist = {
+      "$$$$": entries.filter((e) => e.value === "$$$$").length,
+      "$$$": entries.filter((e) => e.value === "$$$").length,
+      "$$": entries.filter((e) => e.value === "$$").length,
+      "$": entries.filter((e) => e.value === "$").length,
+    };
+
+    let label = "Rendah";
+    if (productivityScore >= 70) label = "Sangat baik";
+    else if (productivityScore >= 50) label = "Cukup baik";
+    else if (productivityScore >= 30) label = "Perlu perbaikan";
+
+    return { gave, took, total, highVal, lowVal, geniusZone, delegateZone, energyRatio, productivityScore, label, planExecuted, plannedTotal: plannedBlocks.length, valDist };
+  }, [entries, plannedBlocks]);
 
   // ── Audit handlers ──
   function resetAuditForm() {
@@ -235,6 +319,16 @@ export default function WaktuSayaPage() {
     } finally { setSavingAudit(false); }
   }
 
+  async function quickAudit(block: WeekBlock, energy: "gave" | "took", value: string) {
+    const res = await fetch("/api/waktu-saya/audit", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_name: block.label, energy, value, date: auditDate, notes: `${block.start_time}–${block.end_time}` }),
+    });
+    if (res.ok) { setToast({ message: "Tersimpan", type: "success" }); refreshAudit(); }
+    else setToast({ message: "Gagal menyimpan", type: "error" });
+  }
+
   async function deleteAudit(id: number) {
     setEntries((prev) => prev.filter((e) => e.id !== id));
     setToast({ message: "Dihapus", type: "success" });
@@ -250,9 +344,7 @@ export default function WaktuSayaPage() {
   }
 
   function refreshWeek() {
-    fetch("/api/waktu-saya/week")
-      .then((r) => r.ok ? r.json() : [])
-      .then((d) => setBlocks(Array.isArray(d) ? d : []));
+    fetch("/api/waktu-saya/week").then((r) => r.ok ? r.json() : []).then((d) => setBlocks(Array.isArray(d) ? d : []));
   }
 
   async function saveBlock() {
@@ -281,8 +373,7 @@ export default function WaktuSayaPage() {
     setSavingReview(true);
     try {
       const res = await fetch("/api/waktu-saya/review", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+        method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ...reviewForm, week_start: reviewWeek }),
       });
       if (res.ok) {
@@ -299,7 +390,7 @@ export default function WaktuSayaPage() {
     setAuditDate(d.toISOString().split("T")[0]);
   }
 
-  function shiftWeek(weeks: number) {
+  function shiftReviewWeek(weeks: number) {
     const d = new Date(reviewWeek + "T00:00:00");
     d.setDate(d.getDate() + weeks * 7);
     setReviewWeek(d.toISOString().split("T")[0]);
@@ -346,134 +437,248 @@ export default function WaktuSayaPage() {
             <button onClick={() => shiftDate(1)} className="p-1.5 hover:bg-gray-100 rounded-md"><ChevronRight className="w-5 h-5 text-gray-600" /></button>
           </div>
 
-          {/* Add button + form */}
-          <div className="flex justify-end">
-            <button onClick={() => { setShowAuditForm(true); setEditEntry(null); setAuditForm({ task_name: "", energy: "took", value: "$", notes: "" }); }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition">
-              <Plus className="w-4 h-4" />Tambah Tugas
-            </button>
-          </div>
-
-          {showAuditForm && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 animate-slide-up space-y-3">
-              <h3 className="font-semibold text-gray-900">{editEntry ? "Edit Tugas" : "Tambah Tugas Hari Ini"}</h3>
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Apa yang kamu kerjakan? *</label>
-                <input type="text" value={auditForm.task_name} onChange={(e) => setAuditForm({ ...auditForm, task_name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="contoh: Cek email, Meeting tim, Review laporan..." />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Energi</label>
-                  <div className="flex gap-2">
-                    <button onClick={() => setAuditForm({ ...auditForm, energy: "gave" })}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-medium border-2 transition ${
-                        auditForm.energy === "gave" ? "border-green-500 bg-green-50 text-green-700" : "border-gray-200 text-gray-500 hover:border-gray-300"
-                      }`}><Zap className="w-4 h-4" />Memberi</button>
-                    <button onClick={() => setAuditForm({ ...auditForm, energy: "took" })}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-medium border-2 transition ${
-                        auditForm.energy === "took" ? "border-red-500 bg-red-50 text-red-700" : "border-gray-200 text-gray-500 hover:border-gray-300"
-                      }`}><ZapOff className="w-4 h-4" />Menyedot</button>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-2">Nilai</label>
-                  <div className="flex gap-1">
-                    {VALUE_OPTIONS.map((v) => (
-                      <button key={v.key} onClick={() => setAuditForm({ ...auditForm, value: v.key })}
-                        title={v.desc}
-                        className={`flex-1 py-2.5 rounded-lg text-sm font-bold border-2 transition ${
-                          auditForm.value === v.key ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-200 text-gray-400 hover:border-gray-300"
-                        }`}>{v.label}</button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Catatan (opsional)</label>
-                <input type="text" value={auditForm.notes} onChange={(e) => setAuditForm({ ...auditForm, notes: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Detail tambahan..." />
-              </div>
-
-              <div className="flex gap-2 pt-1">
-                <button onClick={saveAudit} disabled={savingAudit}
-                  className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition flex items-center gap-2">
-                  {savingAudit && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
-                  {savingAudit ? "Menyimpan..." : "Simpan"}
-                </button>
-                <button onClick={resetAuditForm} disabled={savingAudit} className="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-300 transition">Batal</button>
-              </div>
-            </div>
-          )}
-
-          {/* Entry list */}
           {loadingAudit ? (
             <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
               <div className="w-6 h-6 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin mx-auto mb-2" />
               <p className="text-gray-400">Memuat data...</p>
             </div>
-          ) : entries.length === 0 ? (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
-              <Timer className="w-10 h-10 text-gray-300 mx-auto mb-2" />
-              <p className="text-gray-400">Belum ada tugas dicatat hari ini</p>
-              <p className="text-xs text-gray-300 mt-1">Mulai catat setiap aktivitas untuk mengetahui ke mana waktu dan energi kamu pergi</p>
-            </div>
           ) : (
-            <div className="space-y-2">
-              {entries.map((e) => (
-                <div key={e.id} className={`bg-white rounded-lg shadow-sm border p-3 flex items-center gap-3 ${
-                  e.energy === "gave" ? "border-green-200" : "border-red-200"
-                }`}>
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                    e.energy === "gave" ? "bg-green-100" : "bg-red-100"
-                  }`}>
-                    {e.energy === "gave" ? <Zap className="w-4 h-4 text-green-600" /> : <ZapOff className="w-4 h-4 text-red-500" />}
+            <>
+              {/* Unaudited planned blocks */}
+              {unauditedBlocks.length > 0 && (
+                <div className="bg-white rounded-lg shadow-sm border border-blue-200 p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                      <CalendarDays className="w-4 h-4 text-blue-500" />
+                      Tugas dari rencana minggu sempurna
+                    </h3>
+                    <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                      {unauditedBlocks.length} belum diaudit
+                    </span>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-sm font-medium text-gray-900">{e.task_name}</span>
-                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                        e.energy === "gave" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-600"
-                      }`}>{e.energy === "gave" ? "Memberi Energi" : "Menyedot Energi"}</span>
+                  {unauditedBlocks.map((block) => {
+                    const bt = BLOCK_TYPES[block.block_type] || BLOCK_TYPES.flex;
+                    const BlockIcon = getBlockIcon(block.label, block.block_type);
+                    return (
+                      <div key={block.id} className="flex items-center gap-3 py-2 border-t border-gray-100 first:border-t-0">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${bt.accent}`}>
+                          <BlockIcon className="w-4 h-4 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-gray-900">{block.label}</div>
+                          <div className="text-[11px] text-gray-400">{block.start_time}–{block.end_time}</div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[10px] text-gray-400 mr-1">Energi:</span>
+                          <button onClick={() => quickAudit(block, "gave", "$$")}
+                            className="flex items-center gap-1 px-2 py-1.5 rounded-md border border-green-300 text-green-700 bg-green-50 hover:bg-green-100 transition text-[11px] font-medium">
+                            <Zap className="w-3 h-3" />Memberi
+                          </button>
+                          <button onClick={() => quickAudit(block, "took", "$$")}
+                            className="flex items-center gap-1 px-2 py-1.5 rounded-md border border-red-300 text-red-600 bg-red-50 hover:bg-red-100 transition text-[11px] font-medium">
+                            <ZapOff className="w-3 h-3" />Menyedot
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <p className="text-[10px] text-gray-400">Klik energi untuk langsung audit. Nilai default $$, bisa diedit setelahnya.</p>
+                </div>
+              )}
+
+              {/* Manual add button */}
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-gray-400">
+                  {entries.length > 0 && `${entries.length} tugas sudah diaudit`}
+                  {entries.length > 0 && plannedBlocks.length > 0 && ` — ${plannedBlocks.filter((b) => entries.some((e) => e.task_name.toLowerCase() === b.label.toLowerCase())).length}/${plannedBlocks.length} dari rencana`}
+                </div>
+                <button onClick={() => { setShowAuditForm(true); setEditEntry(null); setAuditForm({ task_name: "", energy: "took", value: "$", notes: "" }); }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 transition">
+                  <Plus className="w-4 h-4" />Tambah manual
+                </button>
+              </div>
+
+              {showAuditForm && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 animate-slide-up space-y-3">
+                  <h3 className="font-semibold text-gray-900">{editEntry ? "Edit Tugas" : "Tambah Tugas Manual"}</h3>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Apa yang kamu kerjakan? *</label>
+                    <input type="text" value={auditForm.task_name} onChange={(e) => setAuditForm({ ...auditForm, task_name: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="contoh: Telepon supplier, Meeting dadakan..." />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-2">Energi</label>
+                      <div className="flex gap-2">
+                        <button onClick={() => setAuditForm({ ...auditForm, energy: "gave" })}
+                          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-medium border-2 transition ${
+                            auditForm.energy === "gave" ? "border-green-500 bg-green-50 text-green-700" : "border-gray-200 text-gray-500 hover:border-gray-300"
+                          }`}><Zap className="w-4 h-4" />Memberi</button>
+                        <button onClick={() => setAuditForm({ ...auditForm, energy: "took" })}
+                          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-lg text-sm font-medium border-2 transition ${
+                            auditForm.energy === "took" ? "border-red-500 bg-red-50 text-red-700" : "border-gray-200 text-gray-500 hover:border-gray-300"
+                          }`}><ZapOff className="w-4 h-4" />Menyedot</button>
+                      </div>
                     </div>
-                    {e.notes && <p className="text-xs text-gray-400 mt-0.5">{e.notes}</p>}
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-2">Nilai</label>
+                      <div className="flex gap-1">
+                        {VALUE_OPTIONS.map((v) => (
+                          <button key={v.key} onClick={() => setAuditForm({ ...auditForm, value: v.key })} title={v.desc}
+                            className={`flex-1 py-2.5 rounded-lg text-sm font-bold border-2 transition ${
+                              auditForm.value === v.key ? "border-blue-500 bg-blue-50 text-blue-700" : "border-gray-200 text-gray-400 hover:border-gray-300"
+                            }`}>{v.label}</button>
+                        ))}
+                      </div>
+                    </div>
                   </div>
-                  <span className="text-sm font-bold text-gray-500 shrink-0">{e.value}</span>
-                  <div className="flex gap-1 shrink-0">
-                    <button onClick={() => { setEditEntry(e); setAuditForm({ task_name: e.task_name, energy: e.energy, value: e.value, notes: e.notes || "" }); setShowAuditForm(true); }}
-                      className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition"><Pencil className="w-3.5 h-3.5" /></button>
-                    <button onClick={() => deleteAudit(e.id)}
-                      className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition"><Trash2 className="w-3.5 h-3.5" /></button>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Catatan (opsional)</label>
+                    <input type="text" value={auditForm.notes} onChange={(e) => setAuditForm({ ...auditForm, notes: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="Detail tambahan..." />
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={saveAudit} disabled={savingAudit}
+                      className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition flex items-center gap-2">
+                      {savingAudit && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
+                      {savingAudit ? "Menyimpan..." : "Simpan"}
+                    </button>
+                    <button onClick={resetAuditForm} disabled={savingAudit} className="px-4 py-2 bg-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-300 transition">Batal</button>
                   </div>
                 </div>
-              ))}
+              )}
 
-              {/* Daily summary */}
-              <div className="bg-gray-50 rounded-lg p-3 grid grid-cols-2 md:grid-cols-4 gap-2 text-center">
-                <MiniStat label="Total Tugas" value={entries.length} />
-                <MiniStat label="Memberi Energi" value={entries.filter((e) => e.energy === "gave").length} />
-                <MiniStat label="Menyedot Energi" value={entries.filter((e) => e.energy === "took").length} />
-                <MiniStat label="Hanya Kamu ($$$$)" value={entries.filter((e) => e.value === "$$$$").length} />
-              </div>
-            </div>
-          )}
+              {/* Audited entries */}
+              {entries.length === 0 && unauditedBlocks.length === 0 ? (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
+                  <Timer className="w-10 h-10 text-gray-300 mx-auto mb-2" />
+                  <p className="text-gray-400">Belum ada tugas hari ini</p>
+                  <p className="text-xs text-gray-300 mt-1">Tambah blok di Minggu Sempurna atau catat tugas manual</p>
+                </div>
+              ) : entries.length > 0 && (
+                <div className="space-y-2">
+                  {entries.map((e) => {
+                    const isFromPlan = plannedBlocks.some((b) => b.label.toLowerCase() === e.task_name.toLowerCase());
+                    return (
+                      <div key={e.id} className={`bg-white rounded-lg shadow-sm border p-3 flex items-center gap-3 ${
+                        e.energy === "gave" ? "border-green-200" : "border-red-200"
+                      }`}>
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                          e.energy === "gave" ? "bg-green-100" : "bg-red-100"
+                        }`}>
+                          {e.energy === "gave" ? <Zap className="w-4 h-4 text-green-600" /> : <ZapOff className="w-4 h-4 text-red-500" />}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium text-gray-900">{e.task_name}</span>
+                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                              isFromPlan ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"
+                            }`}>{isFromPlan ? "Dari rencana" : "Manual"}</span>
+                          </div>
+                          {e.notes && <p className="text-xs text-gray-400 mt-0.5">{e.notes}</p>}
+                        </div>
+                        <span className="text-sm font-bold text-gray-500 shrink-0">{e.value}</span>
+                        <div className="flex gap-1 shrink-0">
+                          <button onClick={() => { setEditEntry(e); setAuditForm({ task_name: e.task_name, energy: e.energy, value: e.value, notes: e.notes || "" }); setShowAuditForm(true); }}
+                            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition"><Pencil className="w-3.5 h-3.5" /></button>
+                          <button onClick={() => deleteAudit(e.id)}
+                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition"><Trash2 className="w-3.5 h-3.5" /></button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
 
-          {/* DRIP Matrix */}
-          {dripData.length > 0 && (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
-              <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2"><Target className="w-4 h-4" /> DRIP Matrix</h3>
-              <p className="text-xs text-gray-400 mb-3">Berdasarkan {dripData.length} tugas dalam 14 hari terakhir</p>
-              <div className="grid grid-cols-2 gap-3">
-                <DripQuadrant title="Delegasikan" desc="Menyedot energi + nilai rendah → serahkan ke orang lain" color="bg-red-50 border-red-200" items={drip.delegate} />
-                <DripQuadrant title="Gantikan" desc="Memberi energi + nilai rendah → latih seseorang" color="bg-amber-50 border-amber-200" items={drip.replace} />
-                <DripQuadrant title="Investasi" desc="Menyedot energi + nilai tinggi → buat lebih efisien" color="bg-blue-50 border-blue-200" items={drip.invest} />
-                <DripQuadrant title="Produksi" desc="Memberi energi + nilai tinggi → zona jenius kamu!" color="bg-green-50 border-green-200" items={drip.produce} />
-              </div>
-            </div>
+              {/* ── Analysis ── */}
+              {analysis && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 space-y-4">
+                  <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                    <BarChart3 className="w-4 h-4" /> Analisa hari ini
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    <MiniStat label="Skor produktivitas" value={`${analysis.productivityScore}%`} sub={analysis.label}
+                      color={analysis.productivityScore >= 70 ? "text-green-600" : analysis.productivityScore >= 50 ? "text-blue-600" : "text-amber-600"} />
+                    <MiniStat label="Energi" value={`${analysis.gave}/${analysis.total}`} sub={`${analysis.energyRatio}% memberi`} />
+                    <MiniStat label="Zona jenius" value={`${analysis.geniusZone}`} sub="$$$$  + memberi" color="text-green-600" />
+                    <MiniStat label="Rencana dieksekusi" value={analysis.plannedTotal > 0 ? `${analysis.planExecuted}/${analysis.plannedTotal}` : "—"} sub={analysis.plannedTotal > 0 ? `${Math.round((analysis.planExecuted / analysis.plannedTotal) * 100)}% on track` : "Tidak ada rencana"} />
+                  </div>
+
+                  {/* Energy bar */}
+                  <div>
+                    <div className="text-xs font-medium text-gray-600 mb-2">Distribusi energi</div>
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <span className="text-[11px] text-gray-500 w-20 text-right shrink-0">Memberi</span>
+                      <div className="flex-1 bg-gray-100 rounded-full h-3">
+                        <div className="h-3 rounded-full bg-green-500 transition-all" style={{ width: `${analysis.energyRatio}%` }} />
+                      </div>
+                      <span className="text-xs font-medium text-gray-700 w-6">{analysis.gave}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-gray-500 w-20 text-right shrink-0">Menyedot</span>
+                      <div className="flex-1 bg-gray-100 rounded-full h-3">
+                        <div className="h-3 rounded-full bg-red-400 transition-all" style={{ width: `${100 - analysis.energyRatio}%` }} />
+                      </div>
+                      <span className="text-xs font-medium text-gray-700 w-6">{analysis.took}</span>
+                    </div>
+                  </div>
+
+                  {/* Value distribution */}
+                  <div>
+                    <div className="text-xs font-medium text-gray-600 mb-2">Distribusi nilai</div>
+                    {(["$$$$", "$$$", "$$", "$"] as const).map((v) => (
+                      <div key={v} className="flex items-center gap-2 mb-1">
+                        <span className="text-[11px] text-gray-500 w-20 text-right shrink-0 font-medium">{v}</span>
+                        <div className="flex-1 bg-gray-100 rounded-full h-2.5">
+                          <div className="h-2.5 rounded-full bg-blue-400 transition-all"
+                            style={{ width: analysis.total > 0 ? `${(analysis.valDist[v] / analysis.total) * 100}%` : "0%",
+                              opacity: v === "$$$$" ? 1 : v === "$$$" ? 0.8 : v === "$$" ? 0.5 : 0.3 }} />
+                        </div>
+                        <span className="text-xs font-medium text-gray-700 w-6">{analysis.valDist[v]}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Insights */}
+                  {analysis.delegateZone.length > 0 && (
+                    <div className="bg-amber-50 border-l-[3px] border-amber-400 p-3 rounded-r-lg">
+                      <div className="text-xs font-semibold text-amber-800 flex items-center gap-1.5 mb-1">
+                        <AlertTriangle className="w-3.5 h-3.5" /> Perlu perhatian
+                      </div>
+                      <p className="text-xs text-amber-700 leading-relaxed">
+                        {analysis.delegateZone.length} tugas menyedot energi dengan nilai rendah: {analysis.delegateZone.map((e) => `"${e.task_name}"`).join(", ")}. Pertimbangkan untuk mendelegasikan.
+                      </p>
+                    </div>
+                  )}
+                  {analysis.geniusZone > 0 && (
+                    <div className="bg-green-50 border-l-[3px] border-green-400 p-3 rounded-r-lg">
+                      <div className="text-xs font-semibold text-green-800 flex items-center gap-1.5 mb-1">
+                        <Trophy className="w-3.5 h-3.5" /> Zona jenius
+                      </div>
+                      <p className="text-xs text-green-700 leading-relaxed">
+                        {entries.filter((e) => e.energy === "gave" && (e.value === "$$$" || e.value === "$$$$")).map((e) => `"${e.task_name}"`).join(", ")} ada di zona produksi. Ini kekuatan utamamu — alokasikan lebih banyak waktu di sini.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* DRIP Matrix */}
+              {dripData.length > 0 && (
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
+                  <h3 className="font-semibold text-gray-900 mb-1 flex items-center gap-2"><Target className="w-4 h-4" /> DRIP Matrix</h3>
+                  <p className="text-xs text-gray-400 mb-3">Berdasarkan {dripData.length} tugas dalam 14 hari terakhir</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <DripQuadrant title="Delegasikan" desc="Menyedot energi + nilai rendah" color="bg-red-50 border-red-200" items={drip.delegate} />
+                    <DripQuadrant title="Gantikan" desc="Memberi energi + nilai rendah" color="bg-amber-50 border-amber-200" items={drip.replace} />
+                    <DripQuadrant title="Investasi" desc="Menyedot energi + nilai tinggi" color="bg-blue-50 border-blue-200" items={drip.invest} />
+                    <DripQuadrant title="Produksi" desc="Memberi energi + nilai tinggi" color="bg-green-50 border-green-200" items={drip.produce} />
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -481,6 +686,20 @@ export default function WaktuSayaPage() {
       {/* ═══ TAB: PERFECT WEEK ═══ */}
       {tab === "week" && (
         <div className="space-y-4">
+          {/* Week navigation */}
+          <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-3 flex items-center justify-between">
+            <button onClick={() => setWeekOffset((o) => o - 1)} className="p-1.5 hover:bg-gray-100 rounded-md">
+              <ChevronLeft className="w-5 h-5 text-gray-600" />
+            </button>
+            <div className="text-center">
+              <div className="text-sm font-semibold text-gray-900">{formatWeekRange(weekDates)}</div>
+              <div className="text-xs text-gray-400">{weekOffset === 0 ? "Minggu ini" : weekOffset === 1 ? "Minggu depan" : weekOffset === -1 ? "Minggu lalu" : `${weekOffset > 0 ? "+" : ""}${weekOffset} minggu`}</div>
+            </div>
+            <button onClick={() => setWeekOffset((o) => o + 1)} className="p-1.5 hover:bg-gray-100 rounded-md">
+              <ChevronRight className="w-5 h-5 text-gray-600" />
+            </button>
+          </div>
+
           <div className="flex justify-end">
             <button onClick={() => { setShowBlockForm(true); setEditBlock(null); setBlockForm({ day_of_week: 1, start_time: "09:00", end_time: "10:00", label: "", block_type: "focus" }); }}
               className="inline-flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition">
@@ -546,9 +765,15 @@ export default function WaktuSayaPage() {
                   <thead>
                     <tr>
                       <th className="w-[52px] p-2 text-right text-[10px] text-gray-400 border-b border-gray-200 border-r border-r-gray-200" />
-                      {DAYS_SHORT.map((d, i) => (
-                        <th key={i} className="p-2 text-center text-xs font-semibold text-gray-500 border-b border-gray-200 border-r border-r-gray-100 last:border-r-0">{d}</th>
-                      ))}
+                      {weekDates.map((date, i) => {
+                        const isToday = isSameDay(date, today);
+                        return (
+                          <th key={i} className={`p-2 text-center border-b border-gray-200 border-r border-r-gray-100 last:border-r-0 ${isToday ? "bg-blue-50" : ""}`}>
+                            <div className="text-[10px] text-gray-400 font-medium">{DAYS_SHORT[i]}</div>
+                            <div className={`text-base font-semibold mt-0.5 ${isToday ? "text-blue-600" : "text-gray-800"}`}>{date.getDate()}</div>
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody>
@@ -566,10 +791,12 @@ export default function WaktuSayaPage() {
                           });
                           const isStart = dayBlocks.some((b) => parseInt(b.start_time.split(":")[0]) === hour);
                           const block = dayBlocks[0];
+                          const isToday = isSameDay(weekDates[dayIdx], today);
+                          const todayBg = isToday ? "bg-blue-50/30" : "";
 
                           if (!block) {
                             return (
-                              <td key={dayIdx} className="border-r border-r-gray-50 last:border-r-0 h-[40px] hover:bg-gray-50 cursor-pointer transition-colors"
+                              <td key={dayIdx} className={`border-r border-r-gray-50 last:border-r-0 h-[40px] hover:bg-gray-50 cursor-pointer transition-colors ${todayBg}`}
                                 onClick={() => {
                                   setEditBlock(null);
                                   setBlockForm({ day_of_week: dayIdx, start_time: `${String(hour).padStart(2, "0")}:00`, end_time: `${String(hour + 1).padStart(2, "0")}:00`, label: "", block_type: "focus" });
@@ -641,14 +868,13 @@ export default function WaktuSayaPage() {
       {/* ═══ TAB: REVIEW ═══ */}
       {tab === "review" && (
         <div className="space-y-4">
-          {/* Week picker */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-3 flex items-center justify-between">
-            <button onClick={() => shiftWeek(-1)} className="p-1.5 hover:bg-gray-100 rounded-md"><ChevronLeft className="w-5 h-5 text-gray-600" /></button>
+            <button onClick={() => shiftReviewWeek(-1)} className="p-1.5 hover:bg-gray-100 rounded-md"><ChevronLeft className="w-5 h-5 text-gray-600" /></button>
             <div className="text-center">
               <div className="text-sm font-medium text-gray-900">Minggu {reviewWeek}</div>
               <div className="text-xs text-gray-400">{review ? "Sudah diisi" : "Belum diisi"}</div>
             </div>
-            <button onClick={() => shiftWeek(1)} className="p-1.5 hover:bg-gray-100 rounded-md"><ChevronRight className="w-5 h-5 text-gray-600" /></button>
+            <button onClick={() => shiftReviewWeek(1)} className="p-1.5 hover:bg-gray-100 rounded-md"><ChevronRight className="w-5 h-5 text-gray-600" /></button>
           </div>
 
           {loadingReview ? (
@@ -658,7 +884,6 @@ export default function WaktuSayaPage() {
           ) : (
             <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 space-y-4">
               <h3 className="font-semibold text-gray-900 flex items-center gap-2"><FileText className="w-4 h-4" /> Review Minggu Ini</h3>
-
               <div className="grid md:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-1">Apa yang berjalan baik?</label>
@@ -685,7 +910,6 @@ export default function WaktuSayaPage() {
                     placeholder="Pencapaian yang patut dirayakan..." />
                 </div>
               </div>
-
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-medium text-gray-600 mb-2">Skor Energi: <span className="font-bold text-gray-900">{reviewForm.energy_score}/10</span></label>
@@ -702,14 +926,12 @@ export default function WaktuSayaPage() {
                   <div className="flex justify-between text-[10px] text-gray-400"><span>Berantakan</span><span>Laser</span></div>
                 </div>
               </div>
-
               <div>
                 <label className="block text-xs font-medium text-gray-600 mb-1">Catatan tambahan</label>
                 <textarea value={reviewForm.notes} onChange={(e) => setReviewForm({ ...reviewForm, notes: e.target.value })}
                   rows={2} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                   placeholder="Insight lain yang perlu dicatat..." />
               </div>
-
               <button onClick={saveReview} disabled={savingReview}
                 className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition flex items-center gap-2">
                 {savingReview && <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />}
@@ -718,7 +940,6 @@ export default function WaktuSayaPage() {
             </div>
           )}
 
-          {/* History chart */}
           {allReviews.length > 1 && (
             <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4">
               <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2"><BarChart3 className="w-4 h-4" /> Tren Energi & Fokus</h3>
@@ -753,11 +974,12 @@ export default function WaktuSayaPage() {
   );
 }
 
-function MiniStat({ label, value }: { label: string; value: string | number }) {
+function MiniStat({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color?: string }) {
   return (
-    <div className="bg-white rounded-md px-3 py-2">
+    <div className="bg-gray-50 rounded-lg px-3 py-2">
       <div className="text-[10px] font-medium text-gray-400 uppercase tracking-wide">{label}</div>
-      <div className="text-sm font-bold text-gray-900">{value}</div>
+      <div className={`text-base font-bold ${color || "text-gray-900"}`}>{value}</div>
+      {sub && <div className="text-[10px] text-gray-400">{sub}</div>}
     </div>
   );
 }
