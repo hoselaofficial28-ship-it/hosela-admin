@@ -88,8 +88,12 @@ const VALUE_OPTIONS = [
   { key: "$$$$", label: "$$$$", desc: "Hanya kamu" },
 ];
 
+function localDateStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function todayStr() {
-  return new Date().toISOString().split("T")[0];
+  return localDateStr(new Date());
 }
 
 function getMonday(d: Date) {
@@ -97,7 +101,7 @@ function getMonday(d: Date) {
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   const monday = new Date(d);
   monday.setDate(diff);
-  return monday.toISOString().split("T")[0];
+  return localDateStr(monday);
 }
 
 function formatDateId(dateStr: string) {
@@ -121,7 +125,7 @@ function getWeekDates(offset: number): Date[] {
 function getWeekSunday(dateStr: string): string {
   const d = new Date(dateStr + "T00:00:00");
   d.setDate(d.getDate() - d.getDay());
-  return d.toISOString().split("T")[0];
+  return localDateStr(d);
 }
 
 function formatWeekRange(dates: Date[]): string {
@@ -134,7 +138,7 @@ function formatWeekRange(dates: Date[]): string {
 }
 
 function dateToStr(d: Date): string {
-  return d.toISOString().split("T")[0];
+  return localDateStr(d);
 }
 
 function isSameDay(a: Date, b: Date) {
@@ -222,7 +226,7 @@ export default function WaktuSayaPage() {
     if (tab !== "audit" || dripLoaded.current) return;
     dripLoaded.current = true;
     const to = todayStr();
-    const from = new Date(Date.now() - 13 * 86400000).toISOString().split("T")[0];
+    const from = localDateStr(new Date(Date.now() - 13 * 86400000));
     fetch(`/api/waktu-saya/audit?from=${from}&to=${to}`)
       .then((r) => r.ok ? r.json() : [])
       .then((d) => setDripData(Array.isArray(d) ? d : []))
@@ -392,8 +396,22 @@ export default function WaktuSayaPage() {
       const url = editBlock ? `/api/waktu-saya/week/${editBlock.id}` : "/api/waktu-saya/week";
       const method = editBlock ? "PUT" : "POST";
       const res = await fetch(url, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      if (res.ok) { setToast({ message: "Tersimpan", type: "success" }); resetBlockForm(); weekCache.current = ""; refreshWeek(); }
-      else setToast({ message: "Gagal menyimpan", type: "error" });
+      if (res.ok) {
+        const data = await res.json();
+        if (editBlock) {
+          setBlocks((prev) => prev.map((b) => b.id === editBlock.id ? { ...b, ...blockForm, week_start: weekStart } : b));
+        } else {
+          const newBlock: WeekBlock = { id: data.id, ...blockForm, week_start: weekStart } as WeekBlock;
+          setBlocks((prev) => [...prev, newBlock]);
+        }
+        setToast({ message: "Tersimpan", type: "success" });
+        resetBlockForm();
+        weekCache.current = "";
+        refreshWeek();
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setToast({ message: errData.error || "Gagal menyimpan", type: "error" });
+      }
     } finally { setSavingBlock(false); }
   }
 
@@ -446,13 +464,13 @@ export default function WaktuSayaPage() {
   function shiftDate(days: number) {
     const d = new Date(auditDate + "T00:00:00");
     d.setDate(d.getDate() + days);
-    setAuditDate(d.toISOString().split("T")[0]);
+    setAuditDate(localDateStr(d));
   }
 
   function shiftReviewWeek(weeks: number) {
     const d = new Date(reviewWeek + "T00:00:00");
     d.setDate(d.getDate() + weeks * 7);
-    setReviewWeek(d.toISOString().split("T")[0]);
+    setReviewWeek(localDateStr(d));
   }
 
   if (!sessionLoaded) return null;
