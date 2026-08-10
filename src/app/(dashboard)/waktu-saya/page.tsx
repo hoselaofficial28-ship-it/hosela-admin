@@ -196,6 +196,12 @@ export default function WaktuSayaPage() {
 
   const prevWeekDates = useMemo(() => getWeekDates(weekOffset - 1), [weekOffset]);
   const prevWeekStart = useMemo(() => dateToStr(prevWeekDates[0]), [prevWeekDates]);
+  const auditTotals = useMemo(() => {
+    const totalValue = entries.reduce((sum, entry) => sum + entry.value.length, 0);
+    const gave = entries.filter((entry) => entry.energy === "gave").length;
+    const took = entries.filter((entry) => entry.energy === "took").length;
+    return { totalValue, gave, took };
+  }, [entries]);
 
   // ── Fetch audit entries ──
   useEffect(() => {
@@ -356,6 +362,25 @@ export default function WaktuSayaPage() {
       if (res.ok) { setToast({ message: "Tersimpan", type: "success" }); resetAuditForm(); auditCache.current = ""; refreshAudit(); }
       else setToast({ message: "Gagal menyimpan", type: "error" });
     } finally { setSavingAudit(false); }
+  }
+
+  async function updateAuditEntry(entry: AuditEntry, patch: Partial<Pick<AuditEntry, "task_name" | "energy" | "value" | "notes">>) {
+    const next = { ...entry, ...patch };
+    setEntries((prev) => prev.map((item) => item.id === entry.id ? next : item));
+    const res = await fetch(`/api/waktu-saya/audit/${entry.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        task_name: next.task_name,
+        energy: next.energy,
+        value: next.value,
+        notes: next.notes || null,
+      }),
+    });
+    if (!res.ok) {
+      setEntries((prev) => prev.map((item) => item.id === entry.id ? entry : item));
+      setToast({ message: "Gagal update audit", type: "error" });
+    }
   }
 
   async function quickAudit(block: WeekBlock, energy: "gave" | "took", value: string) {
@@ -521,6 +546,27 @@ export default function WaktuSayaPage() {
             </div>
           ) : (
             <>
+              <AuditSheet
+                auditForm={auditForm}
+                auditTotals={auditTotals}
+                entries={entries}
+                plannedBlocks={plannedBlocks}
+                savingAudit={savingAudit}
+                showAuditForm={showAuditForm}
+                unauditedBlocks={unauditedBlocks}
+                onDelete={deleteAudit}
+                onEdit={(entry) => {
+                  setEditEntry(entry);
+                  setAuditForm({ task_name: entry.task_name, energy: entry.energy, value: entry.value, notes: entry.notes || "" });
+                  setShowAuditForm(true);
+                }}
+                onFormChange={setAuditForm}
+                onQuickAudit={quickAudit}
+                onReset={resetAuditForm}
+                onSave={saveAudit}
+                onUpdateEntry={updateAuditEntry}
+              />
+              <div className="hidden">
               {/* Unaudited planned blocks */}
               {unauditedBlocks.length > 0 && (
                 <div className="bg-white rounded-lg shadow-sm border border-blue-200 p-4 space-y-3">
@@ -684,6 +730,7 @@ export default function WaktuSayaPage() {
               )}
 
               {/* ── Analysis ── */}
+              </div>
               {analysis && (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 space-y-4">
                   <h3 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
@@ -1068,6 +1115,235 @@ export default function WaktuSayaPage() {
       )}
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+    </div>
+  );
+}
+
+type AuditFormState = {
+  task_name: string;
+  energy: "gave" | "took";
+  value: string;
+  notes: string;
+};
+
+function AuditSheet({
+  auditForm,
+  auditTotals,
+  entries,
+  plannedBlocks,
+  savingAudit,
+  showAuditForm,
+  unauditedBlocks,
+  onDelete,
+  onEdit,
+  onFormChange,
+  onQuickAudit,
+  onReset,
+  onSave,
+  onUpdateEntry,
+}: {
+  auditForm: AuditFormState;
+  auditTotals: { totalValue: number; gave: number; took: number };
+  entries: AuditEntry[];
+  plannedBlocks: WeekBlock[];
+  savingAudit: boolean;
+  showAuditForm: boolean;
+  unauditedBlocks: WeekBlock[];
+  onDelete: (id: number) => void;
+  onEdit: (entry: AuditEntry) => void;
+  onFormChange: (value: AuditFormState) => void;
+  onQuickAudit: (block: WeekBlock, energy: "gave" | "took", value: string) => void;
+  onReset: () => void;
+  onSave: () => void;
+  onUpdateEntry: (entry: AuditEntry, patch: Partial<Pick<AuditEntry, "task_name" | "energy" | "value" | "notes">>) => void;
+}) {
+  return (
+    <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+      <div className="border-b border-gray-200 bg-gray-100 px-4 py-3">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-lg font-semibold text-gray-950">Time & Energy Audit</div>
+            <div className="text-xs text-gray-500">{entries.length} tugas tercatat hari ini</div>
+          </div>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded border border-gray-200 bg-white px-3 py-1.5">
+              <div className="text-[10px] font-semibold uppercase text-gray-400">Hijau</div>
+              <div className="text-sm font-bold text-lime-700">{auditTotals.gave}</div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white px-3 py-1.5">
+              <div className="text-[10px] font-semibold uppercase text-gray-400">Merah</div>
+              <div className="text-sm font-bold text-red-600">{auditTotals.took}</div>
+            </div>
+            <div className="rounded border border-gray-200 bg-white px-3 py-1.5">
+              <div className="text-[10px] font-semibold uppercase text-gray-400">Total $</div>
+              <div className="text-sm font-bold text-gray-900">{"$".repeat(Math.min(auditTotals.totalValue, 12)) || "-"}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[720px] border-collapse">
+          <thead>
+            <tr className="border-b border-gray-300 bg-white text-left">
+              <th className="w-[58%] px-4 py-2 text-[11px] font-bold uppercase text-gray-500">Task</th>
+              <th className="w-[130px] border-l border-dashed border-gray-300 px-3 py-2 text-center text-[11px] font-bold uppercase text-gray-500">Energy</th>
+              <th className="w-[150px] border-l border-dashed border-gray-300 px-3 py-2 text-center text-[11px] font-bold uppercase text-gray-500">Value</th>
+              <th className="w-[72px] px-3 py-2" />
+            </tr>
+          </thead>
+          <tbody>
+            {entries.map((entry) => {
+              const isGave = entry.energy === "gave";
+              const isFromPlan = plannedBlocks.some((block) => block.label.toLowerCase() === entry.task_name.toLowerCase());
+              return (
+                <tr key={entry.id} className="group border-b border-gray-200 last:border-b-0">
+                  <td className="px-4 py-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-block min-h-7 max-w-full rounded-sm px-3 py-1 text-sm font-medium leading-5 text-gray-900 shadow-[inset_0_-9px_0_rgba(255,255,255,.28)] ${
+                        isGave ? "bg-lime-200" : "bg-red-300"
+                      }`}>
+                        {entry.task_name}
+                      </span>
+                      {isFromPlan && <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[10px] font-medium text-blue-600">rencana</span>}
+                    </div>
+                    {entry.notes && <div className="mt-1 text-[11px] text-gray-400">{entry.notes}</div>}
+                  </td>
+                  <td className="border-l border-dashed border-gray-300 px-3 py-2">
+                    <div className="flex justify-center gap-1">
+                      <button onClick={() => onUpdateEntry(entry, { energy: "gave" })} title="Memberi energi"
+                        className={`h-7 w-9 rounded-sm border text-xs font-bold transition ${isGave ? "border-lime-500 bg-lime-300 text-lime-900" : "border-gray-200 bg-white text-gray-300 hover:text-lime-600"}`}>
+                        H
+                      </button>
+                      <button onClick={() => onUpdateEntry(entry, { energy: "took" })} title="Menyedot energi"
+                        className={`h-7 w-9 rounded-sm border text-xs font-bold transition ${!isGave ? "border-red-500 bg-red-300 text-red-900" : "border-gray-200 bg-white text-gray-300 hover:text-red-500"}`}>
+                        M
+                      </button>
+                    </div>
+                  </td>
+                  <td className="border-l border-dashed border-gray-300 px-3 py-2">
+                    <div className="flex justify-center gap-1">
+                      {VALUE_OPTIONS.map((option) => (
+                        <button key={option.key} onClick={() => onUpdateEntry(entry, { value: option.key as AuditEntry["value"] })} title={option.desc}
+                          className={`h-7 min-w-7 rounded-sm border px-1 text-xs font-bold transition ${
+                            entry.value === option.key ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 bg-white text-gray-400 hover:border-gray-400"
+                          }`}>
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex justify-end gap-1 opacity-100 md:opacity-0 md:transition-opacity md:group-hover:opacity-100">
+                      <button onClick={() => onEdit(entry)} className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-gray-700" title="Edit detail">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={() => onDelete(entry.id)} className="flex h-7 w-7 items-center justify-center rounded border border-gray-200 text-gray-400 hover:text-red-600" title="Hapus">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+
+            <tr className="bg-gray-50">
+              <td className="px-4 py-3">
+                <input
+                  type="text"
+                  value={auditForm.task_name}
+                  onChange={(event) => onFormChange({ ...auditForm, task_name: event.target.value })}
+                  onKeyDown={(event) => { if (event.key === "Enter") onSave(); }}
+                  className="w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+                  placeholder="Tulis tugas di sini..."
+                />
+              </td>
+              <td className="border-l border-dashed border-gray-300 px-3 py-3">
+                <div className="flex justify-center gap-1">
+                  <button onClick={() => onFormChange({ ...auditForm, energy: "gave" })} className={`h-9 w-10 rounded-sm border text-xs font-bold transition ${auditForm.energy === "gave" ? "border-lime-500 bg-lime-300 text-lime-900" : "border-gray-200 bg-white text-gray-400"}`} title="Memberi energi">H</button>
+                  <button onClick={() => onFormChange({ ...auditForm, energy: "took" })} className={`h-9 w-10 rounded-sm border text-xs font-bold transition ${auditForm.energy === "took" ? "border-red-500 bg-red-300 text-red-900" : "border-gray-200 bg-white text-gray-400"}`} title="Menyedot energi">M</button>
+                </div>
+              </td>
+              <td className="border-l border-dashed border-gray-300 px-3 py-3">
+                <div className="flex justify-center gap-1">
+                  {VALUE_OPTIONS.map((option) => (
+                    <button key={option.key} onClick={() => onFormChange({ ...auditForm, value: option.key })} title={option.desc}
+                      className={`h-9 min-w-8 rounded-sm border px-1 text-xs font-bold transition ${
+                        auditForm.value === option.key ? "border-gray-900 bg-gray-900 text-white" : "border-gray-200 bg-white text-gray-400 hover:border-gray-400"
+                      }`}>
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </td>
+              <td className="px-3 py-3">
+                <button onClick={onSave} disabled={savingAudit} className="flex h-9 w-full items-center justify-center rounded bg-gray-900 text-white transition hover:bg-gray-800 disabled:opacity-60" title="Simpan tugas">
+                  {savingAudit ? <span className="h-4 w-4 rounded-full border-2 border-white/30 border-t-white animate-spin" /> : <Plus className="h-4 w-4" />}
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      {entries.length === 0 && unauditedBlocks.length === 0 && (
+        <div className="border-t border-gray-200 px-4 py-5 text-center text-sm text-gray-400">
+          Belum ada tugas. Isi baris bawah tabel untuk mulai audit.
+        </div>
+      )}
+
+      {showAuditForm && (
+        <div className="border-t border-gray-200 bg-white p-4">
+          <div className="grid gap-3 md:grid-cols-[1fr_220px_auto] md:items-end">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Catatan tambahan</label>
+              <input type="text" value={auditForm.notes} onChange={(event) => onFormChange({ ...auditForm, notes: event.target.value })}
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm outline-none focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10"
+                placeholder="Opsional, contoh: 16:00-16:30" />
+            </div>
+            <button onClick={onSave} disabled={savingAudit} className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-60">
+              Simpan detail
+            </button>
+            <button onClick={onReset} className="rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+              Batal
+            </button>
+          </div>
+        </div>
+      )}
+
+      {unauditedBlocks.length > 0 && (
+        <div className="border-t border-blue-100 bg-blue-50/60 p-4">
+          <div className="mb-3 flex items-center justify-between">
+            <div className="text-sm font-semibold text-gray-900">Rencana minggu sempurna yang belum diaudit</div>
+            <span className="rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">{unauditedBlocks.length} item</span>
+          </div>
+          <div className="grid gap-2">
+            {unauditedBlocks.map((block) => (
+              <div key={block.id} className="flex flex-col gap-2 rounded border border-blue-100 bg-white p-2 md:flex-row md:items-center">
+                <div className="flex-1">
+                  <div className="text-sm font-medium text-gray-900">{block.label}</div>
+                  <div className="text-[11px] text-gray-400">{block.start_time}-{block.end_time}</div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => onQuickAudit(block, "gave", "$$")} className="rounded-sm bg-lime-300 px-3 py-1.5 text-xs font-bold text-lime-900">Stabilo Hijau</button>
+                  <button onClick={() => onQuickAudit(block, "took", "$$")} className="rounded-sm bg-red-300 px-3 py-1.5 text-xs font-bold text-red-900">Stabilo Merah</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center justify-center gap-5 border-t border-gray-200 bg-gray-50 px-4 py-3">
+        <div className="flex items-center gap-2">
+          <div className="h-3 w-12 rounded-sm bg-lime-300" />
+          <span className="text-xs font-medium text-gray-600">Gave Energy</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="h-3 w-12 rounded-sm bg-red-300" />
+          <span className="text-xs font-medium text-gray-600">Took Energy</span>
+        </div>
+      </div>
     </div>
   );
 }
