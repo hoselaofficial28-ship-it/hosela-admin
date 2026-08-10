@@ -290,6 +290,7 @@ async function initializePostgres() {
       end_time TEXT NOT NULL,
       label TEXT NOT NULL,
       block_type TEXT NOT NULL DEFAULT 'focus' CHECK(block_type IN ('focus', 'meeting', 'personal', 'admin', 'flex', 'routine')),
+      week_start TEXT,
       created_at TIMESTAMPTZ DEFAULT now(),
       updated_at TIMESTAMPTZ DEFAULT now()
     );
