@@ -487,13 +487,13 @@ export default function WaktuSayaPage() {
         <div className="space-y-4">
           {/* Date picker */}
           <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-3 flex items-center justify-between">
-            <button onClick={() => shiftDate(-1)} className="p-1.5 hover:bg-gray-100 rounded-md"><ChevronLeft className="w-5 h-5 text-gray-600" /></button>
-            <div className="text-center">
+            <button onClick={() => shiftDate(-1)} className="p-1.5 hover:bg-gray-100 rounded-md z-10"><ChevronLeft className="w-5 h-5 text-gray-600" /></button>
+            <div className="text-center flex-1 max-w-[200px]">
               <input type="date" value={auditDate} onChange={(e) => setAuditDate(e.target.value)}
-                className="text-sm font-medium text-gray-900 border-none outline-none text-center bg-transparent cursor-pointer" />
+                className="text-sm font-medium text-gray-900 border-none outline-none text-center bg-transparent cursor-pointer w-full" />
               <div className="text-xs text-gray-400">{formatDateId(auditDate)}</div>
             </div>
-            <button onClick={() => shiftDate(1)} className="p-1.5 hover:bg-gray-100 rounded-md"><ChevronRight className="w-5 h-5 text-gray-600" /></button>
+            <button onClick={() => shiftDate(1)} className="p-1.5 hover:bg-gray-100 rounded-md z-10"><ChevronRight className="w-5 h-5 text-gray-600" /></button>
           </div>
 
           {loadingAudit ? (
@@ -609,7 +609,7 @@ export default function WaktuSayaPage() {
                 </div>
               )}
 
-              {/* Audited entries */}
+              {/* Audit Table — Dan Martell style */}
               {entries.length === 0 && unauditedBlocks.length === 0 ? (
                 <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-8 text-center">
                   <Timer className="w-10 h-10 text-gray-300 mx-auto mb-2" />
@@ -617,37 +617,51 @@ export default function WaktuSayaPage() {
                   <p className="text-xs text-gray-300 mt-1">Tambah blok di Minggu Sempurna atau catat tugas manual</p>
                 </div>
               ) : entries.length > 0 && (
-                <div className="space-y-2">
-                  {entries.map((e) => {
-                    const isFromPlan = plannedBlocks.some((b) => b.label.toLowerCase() === e.task_name.toLowerCase());
-                    return (
-                      <div key={e.id} className={`bg-white rounded-lg shadow-sm border p-3 flex items-center gap-3 ${
-                        e.energy === "gave" ? "border-green-200" : "border-red-200"
-                      }`}>
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
-                          e.energy === "gave" ? "bg-green-100" : "bg-red-100"
+                <div className="bg-white rounded-lg shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="bg-gray-100 px-4 py-2.5 flex items-center justify-between border-b border-gray-200">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Tugas</span>
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider w-20 text-center">Nilai</span>
+                  </div>
+                  <div className="divide-y divide-gray-100">
+                    {entries.map((e) => {
+                      const isFromPlan = plannedBlocks.some((b) => b.label.toLowerCase() === e.task_name.toLowerCase());
+                      const isGave = e.energy === "gave";
+                      return (
+                        <div key={e.id} className={`group flex items-center px-4 py-2.5 transition-colors ${
+                          isGave ? "bg-green-50/60 hover:bg-green-50" : "bg-red-50/60 hover:bg-red-50"
                         }`}>
-                          {e.energy === "gave" ? <Zap className="w-4 h-4 text-green-600" /> : <ZapOff className="w-4 h-4 text-red-500" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-medium text-gray-900">{e.task_name}</span>
-                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                              isFromPlan ? "bg-blue-100 text-blue-700" : "bg-gray-100 text-gray-500"
-                            }`}>{isFromPlan ? "Dari rencana" : "Manual"}</span>
+                          <div className={`w-1 h-8 rounded-full mr-3 shrink-0 ${isGave ? "bg-green-400" : "bg-red-400"}`} />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-gray-800">{e.task_name}</span>
+                              {isFromPlan && <span className="text-[9px] font-medium px-1.5 py-0.5 rounded bg-blue-100 text-blue-600">rencana</span>}
+                            </div>
+                            {e.notes && <p className="text-[11px] text-gray-400 mt-0.5">{e.notes}</p>}
                           </div>
-                          {e.notes && <p className="text-xs text-gray-400 mt-0.5">{e.notes}</p>}
+                          <div className="flex items-center gap-2 shrink-0">
+                            <span className="text-sm font-bold text-gray-600 w-12 text-center">{e.value}</span>
+                            <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button onClick={() => { setEditEntry(e); setAuditForm({ task_name: e.task_name, energy: e.energy, value: e.value, notes: e.notes || "" }); setShowAuditForm(true); }}
+                                className="p-1 text-gray-400 hover:text-gray-600 hover:bg-white/80 rounded transition"><Pencil className="w-3.5 h-3.5" /></button>
+                              <button onClick={() => deleteAudit(e.id)}
+                                className="p-1 text-gray-400 hover:text-red-600 hover:bg-white/80 rounded transition"><Trash2 className="w-3.5 h-3.5" /></button>
+                            </div>
+                          </div>
                         </div>
-                        <span className="text-sm font-bold text-gray-500 shrink-0">{e.value}</span>
-                        <div className="flex gap-1 shrink-0">
-                          <button onClick={() => { setEditEntry(e); setAuditForm({ task_name: e.task_name, energy: e.energy, value: e.value, notes: e.notes || "" }); setShowAuditForm(true); }}
-                            className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-md transition"><Pencil className="w-3.5 h-3.5" /></button>
-                          <button onClick={() => deleteAudit(e.id)}
-                            className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-md transition"><Trash2 className="w-3.5 h-3.5" /></button>
-                        </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
+                  {/* Legend */}
+                  <div className="px-4 py-2.5 border-t border-gray-200 bg-gray-50 flex items-center justify-center gap-6">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-2.5 rounded-full bg-green-400" />
+                      <span className="text-[11px] text-gray-500 font-medium">Memberi Energi</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-2.5 rounded-full bg-red-400" />
+                      <span className="text-[11px] text-gray-500 font-medium">Menyedot Energi</span>
+                    </div>
+                  </div>
                 </div>
               )}
 
