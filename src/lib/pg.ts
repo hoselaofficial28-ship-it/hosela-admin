@@ -9,11 +9,11 @@ const globalForPg = globalThis as unknown as {
 };
 
 export function hasPostgres() {
-  return Boolean(process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL);
+  return Boolean(process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL || process.env.STORAGE_URL);
 }
 
 function getConnectionString() {
-  return process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL || "";
+  return process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL || process.env.STORAGE_URL || "";
 }
 
 export function getPgPool() {

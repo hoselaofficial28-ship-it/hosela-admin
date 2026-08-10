@@ -50,3 +50,5 @@ hosela.db-wal
 next-env.d.ts
 
 .vercel
+
+.env*
