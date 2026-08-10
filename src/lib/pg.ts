@@ -31,7 +31,10 @@ export function getPgPool() {
 export async function initPg() {
   if (!hasPostgres()) return;
   if (!globalForPg.hoselaPgInitialized) {
-    globalForPg.hoselaPgInitialized = initializePostgres();
+    globalForPg.hoselaPgInitialized = initializePostgres().catch((err) => {
+      globalForPg.hoselaPgInitialized = undefined;
+      throw err;
+    });
   }
   await globalForPg.hoselaPgInitialized;
 }
@@ -64,6 +67,20 @@ export async function pgTransaction<T>(fn: (client: PoolClient) => Promise<T>) {
 
 async function initializePostgres() {
   const pool = getPgPool();
+
+  const tableCheck = await pool.query(
+    "SELECT COUNT(*) as count FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'hn_users'"
+  );
+  const tablesExist = Number(tableCheck.rows[0].count) > 0;
+
+  if (tablesExist) {
+    try {
+      await runMigrations(pool);
+    } catch {
+      // read-only DB — migrations are idempotent, safe to skip
+    }
+    return;
+  }
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS hn_stores (
@@ -293,9 +310,6 @@ async function initializePostgres() {
       UNIQUE(user_id, week_start)
     );
 
-    ALTER TABLE hn_perfect_week ADD COLUMN IF NOT EXISTS week_start TEXT;
-    UPDATE hn_perfect_week SET week_start = to_char(date_trunc('week', now()) - interval '1 day', 'YYYY-MM-DD') WHERE week_start IS NULL;
-
     CREATE INDEX IF NOT EXISTS hn_idx_time_audit_user_date ON hn_time_audit(user_id, date);
     CREATE INDEX IF NOT EXISTS hn_idx_perfect_week_user ON hn_perfect_week(user_id);
     CREATE INDEX IF NOT EXISTS hn_idx_perfect_week_user_week ON hn_perfect_week(user_id, week_start);
@@ -313,24 +327,7 @@ async function initializePostgres() {
     CREATE INDEX IF NOT EXISTS hn_idx_users_status ON hn_users(status);
   `);
 
-  const actionCols = await pool.query(
-    `SELECT column_name FROM information_schema.columns WHERE table_name = 'hn_meeting_action_items' AND column_name = 'note_id'`
-  );
-  if (actionCols.rows.length === 0) {
-    await pool.query(`ALTER TABLE hn_meeting_action_items ADD COLUMN note_id INTEGER REFERENCES hn_admin_notes(id)`);
-  }
-
-  const noteTaskCol = await pool.query(
-    `SELECT column_name FROM information_schema.columns WHERE table_name = 'hn_admin_notes' AND column_name = 'task_id'`
-  );
-  if (noteTaskCol.rows.length === 0) {
-    await pool.query(`ALTER TABLE hn_admin_notes ADD COLUMN task_id INTEGER REFERENCES hn_tasks(id) ON DELETE SET NULL`);
-  }
-
-  await pool.query(`
-    UPDATE hn_user_permissions SET allowed = 1
-    WHERE feature = 'lab_riset' AND allowed = 0
-  `);
+  await runMigrations(pool);
 
   const stores = await pool.query<{ count: string }>("SELECT COUNT(*) as count FROM hn_stores");
   if (Number(stores.rows[0]?.count || 0) === 0) {
@@ -355,6 +352,30 @@ async function initializePostgres() {
   }
 
   await seedPostgresPermissions();
+}
+
+async function runMigrations(pool: Pool) {
+  const actionCols = await pool.query(
+    `SELECT column_name FROM information_schema.columns WHERE table_name = 'hn_meeting_action_items' AND column_name = 'note_id'`
+  );
+  if (actionCols.rows.length === 0) {
+    await pool.query(`ALTER TABLE hn_meeting_action_items ADD COLUMN note_id INTEGER REFERENCES hn_admin_notes(id)`);
+  }
+
+  const noteTaskCol = await pool.query(
+    `SELECT column_name FROM information_schema.columns WHERE table_name = 'hn_admin_notes' AND column_name = 'task_id'`
+  );
+  if (noteTaskCol.rows.length === 0) {
+    await pool.query(`ALTER TABLE hn_admin_notes ADD COLUMN task_id INTEGER REFERENCES hn_tasks(id) ON DELETE SET NULL`);
+  }
+
+  const weekStartCol = await pool.query(
+    `SELECT column_name FROM information_schema.columns WHERE table_name = 'hn_perfect_week' AND column_name = 'week_start'`
+  );
+  if (weekStartCol.rows.length === 0) {
+    await pool.query(`ALTER TABLE hn_perfect_week ADD COLUMN week_start TEXT`);
+    await pool.query(`UPDATE hn_perfect_week SET week_start = to_char(date_trunc('week', now()) - interval '1 day', 'YYYY-MM-DD') WHERE week_start IS NULL`);
+  }
 }
 
 async function seedPostgresHistoricalData(pool: Pool) {
