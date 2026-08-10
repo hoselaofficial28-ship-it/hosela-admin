@@ -52,7 +52,7 @@ const PERIOD_OPTIONS: { key: PeriodKey; label: string }[] = [
 
 function getDateRange(period: PeriodKey): { start: string; end: string; prevStart: string; prevEnd: string } {
   const today = new Date();
-  const fmt = (d: Date) => d.toISOString().split("T")[0];
+  const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
   switch (period) {
     case "7d": {
@@ -120,12 +120,22 @@ export default function DashboardPage() {
 
     Promise.all([
       fetch("/api/stores").then((r) => r.ok ? r.json() : []),
-      fetch(`/api/shipments?start=${range.start}&end=${range.end}${storeParam}`).then((r) => {
-        if (!r.ok) throw new Error(r.status === 401 ? "unauthorized" : "forbidden");
+      fetch(`/api/shipments?start=${range.start}&end=${range.end}${storeParam}`).then(async (r) => {
+        if (!r.ok) {
+          if (r.status === 401) throw new Error("unauthorized");
+          if (r.status === 403) throw new Error("forbidden");
+          const body = await r.json().catch(() => ({}));
+          throw new Error(body.error || `Server error (${r.status})`);
+        }
         return r.json();
       }),
-      fetch(`/api/stats?start=${range.start}&end=${range.end}&prev_start=${range.prevStart}&prev_end=${range.prevEnd}${storeParam}`).then((r) => {
-        if (!r.ok) throw new Error(r.status === 401 ? "unauthorized" : "forbidden");
+      fetch(`/api/stats?start=${range.start}&end=${range.end}&prev_start=${range.prevStart}&prev_end=${range.prevEnd}${storeParam}`).then(async (r) => {
+        if (!r.ok) {
+          if (r.status === 401) throw new Error("unauthorized");
+          if (r.status === 403) throw new Error("forbidden");
+          const body = await r.json().catch(() => ({}));
+          throw new Error(body.error || `Server error (${r.status})`);
+        }
         return r.json();
       }),
     ])
@@ -138,9 +148,10 @@ export default function DashboardPage() {
       .catch((err) => {
         setShipments([]);
         setStats(EMPTY_STATS);
-        setError(err.message === "unauthorized"
-          ? "Sesi kamu sudah berakhir. Silakan login ulang."
-          : "Akun ini belum punya akses Dashboard.");
+        const msg = err.message;
+        if (msg === "unauthorized") setError("Sesi kamu sudah berakhir. Silakan login ulang.");
+        else if (msg === "forbidden") setError("Akun ini belum punya akses Dashboard.");
+        else setError(msg || "Gagal memuat data. Coba refresh halaman.");
         setLoading(false);
       });
   }, [period, customStart, customEnd, selectedStore]);

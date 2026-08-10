@@ -87,10 +87,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   useEffect(() => {
     const today = new Date();
-    const end = today.toISOString().split("T")[0];
+    const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    const end = fmt(today);
     const startDate = new Date(today);
     startDate.setDate(startDate.getDate() - 29);
-    const start = startDate.toISOString().split("T")[0];
+    const start = fmt(startDate);
 
     Promise.allSettled([
       fetch("/api/stores"),
