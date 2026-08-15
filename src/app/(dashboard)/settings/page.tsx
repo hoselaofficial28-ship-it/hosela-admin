@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Plus, Pencil, Trash2, X, Check, Store } from "lucide-react";
+import { Eye, EyeOff, Key, Lock, Plus, Pencil, Trash2, X, Check, Store } from "lucide-react";
 import Toast from "@/components/Toast";
 
 interface StoreItem {
@@ -203,6 +203,9 @@ export default function SettingsPage() {
         </div>
       </div>
 
+      {/* Account Security */}
+      <AccountSection toast={setToast} />
+
       {/* Email Config Info */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4">
         <h3 className="font-semibold text-gray-900 mb-2">Konfigurasi Email</h3>
@@ -217,6 +220,174 @@ export default function SettingsPage() {
       </div>
 
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+    </div>
+  );
+}
+
+function AccountSection({ toast }: { toast: (t: { message: string; type: "success" | "error" }) => void }) {
+  const [showPw, setShowPw] = useState(false);
+  const [showPin, setShowPin] = useState(false);
+  const [pw, setPw] = useState({ current: "", new1: "", new2: "" });
+  const [pin, setPin] = useState("");
+  const [saving, setSaving] = useState<"pw" | "pin" | null>(null);
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+
+  async function handleChangePassword() {
+    if (!pw.current || !pw.new1) {
+      toast({ message: "Isi password lama dan baru", type: "error" });
+      return;
+    }
+    if (pw.new1.length < 6) {
+      toast({ message: "Password baru minimal 6 karakter", type: "error" });
+      return;
+    }
+    if (pw.new1 !== pw.new2) {
+      toast({ message: "Konfirmasi password tidak cocok", type: "error" });
+      return;
+    }
+    setSaving("pw");
+    const res = await fetch("/api/auth/account", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "change_password", currentPassword: pw.current, newPassword: pw.new1 }),
+    });
+    if (res.ok) {
+      toast({ message: "Password berhasil diubah", type: "success" });
+      setPw({ current: "", new1: "", new2: "" });
+      setShowPw(false);
+    } else {
+      const data = await res.json();
+      toast({ message: data.error || "Gagal mengubah password", type: "error" });
+    }
+    setSaving(null);
+  }
+
+  async function handleChangePin() {
+    if (!/^\d{4,6}$/.test(pin)) {
+      toast({ message: "PIN harus 4-6 digit angka", type: "error" });
+      return;
+    }
+    setSaving("pin");
+    const res = await fetch("/api/auth/account", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "change_pin", newPin: pin }),
+    });
+    if (res.ok) {
+      toast({ message: "PIN berhasil diubah", type: "success" });
+      setPin("");
+      setShowPin(false);
+    } else {
+      const data = await res.json();
+      toast({ message: data.error || "Gagal mengubah PIN", type: "error" });
+    }
+    setSaving(null);
+  }
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-4 mb-4">
+      <h3 className="font-semibold text-gray-900 flex items-center gap-2 mb-4">
+        <Lock className="w-5 h-5 text-blue-600" />
+        Akun Saya
+      </h3>
+
+      <div className="space-y-3">
+        {/* Change Password */}
+        <div className="border border-gray-100 rounded-xl p-3">
+          <button
+            onClick={() => setShowPw(!showPw)}
+            className="flex items-center justify-between w-full text-left"
+          >
+            <div className="flex items-center gap-2">
+              <Key className="w-4 h-4 text-gray-500" />
+              <span className="text-sm font-medium text-gray-900">Ubah Password</span>
+            </div>
+            <span className="text-xs text-blue-600 font-medium">{showPw ? "Tutup" : "Ubah"}</span>
+          </button>
+
+          {showPw && (
+            <div className="mt-3 space-y-2 animate-fade-in">
+              <div className="relative">
+                <input
+                  type={showCurrent ? "text" : "password"}
+                  value={pw.current}
+                  onChange={(e) => setPw({ ...pw, current: e.target.value })}
+                  placeholder="Password saat ini"
+                  className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button type="button" onClick={() => setShowCurrent(!showCurrent)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <div className="relative">
+                <input
+                  type={showNew ? "text" : "password"}
+                  value={pw.new1}
+                  onChange={(e) => setPw({ ...pw, new1: e.target.value })}
+                  placeholder="Password baru (min. 6 karakter)"
+                  className="w-full px-3 py-2 pr-10 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <button type="button" onClick={() => setShowNew(!showNew)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                  {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+              <input
+                type="password"
+                value={pw.new2}
+                onChange={(e) => setPw({ ...pw, new2: e.target.value })}
+                placeholder="Konfirmasi password baru"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={handleChangePassword}
+                disabled={saving === "pw"}
+                className="w-full py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+              >
+                {saving === "pw" ? "Menyimpan..." : "Simpan Password Baru"}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Change PIN */}
+        <div className="border border-gray-100 rounded-xl p-3">
+          <button
+            onClick={() => setShowPin(!showPin)}
+            className="flex items-center justify-between w-full text-left"
+          >
+            <div className="flex items-center gap-2">
+              <Lock className="w-4 h-4 text-gray-500" />
+              <div>
+                <span className="text-sm font-medium text-gray-900">Ubah PIN</span>
+                <span className="text-xs text-gray-400 ml-2">4-6 digit</span>
+              </div>
+            </div>
+            <span className="text-xs text-blue-600 font-medium">{showPin ? "Tutup" : "Ubah"}</span>
+          </button>
+
+          {showPin && (
+            <div className="mt-3 space-y-2 animate-fade-in">
+              <input
+                type="password"
+                inputMode="numeric"
+                maxLength={6}
+                value={pin}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+                placeholder="Masukkan PIN baru (4-6 digit)"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm text-center tracking-[0.5em] font-mono outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                onClick={handleChangePin}
+                disabled={saving === "pin"}
+                className="w-full py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+              >
+                {saving === "pin" ? "Menyimpan..." : "Simpan PIN Baru"}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

@@ -377,6 +377,13 @@ async function runMigrations(pool: Pool) {
     await pool.query(`ALTER TABLE hn_perfect_week ADD COLUMN week_start TEXT`);
     await pool.query(`UPDATE hn_perfect_week SET week_start = to_char(date_trunc('week', now()) - interval '1 day', 'YYYY-MM-DD') WHERE week_start IS NULL`);
   }
+
+  const pinCol = await pool.query(
+    `SELECT column_name FROM information_schema.columns WHERE table_name = 'hn_users' AND column_name = 'pin_hash'`
+  );
+  if (pinCol.rows.length === 0) {
+    await pool.query(`ALTER TABLE hn_users ADD COLUMN pin_hash TEXT`);
+  }
 }
 
 async function seedPostgresHistoricalData(pool: Pool) {
