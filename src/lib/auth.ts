@@ -69,6 +69,14 @@ export function createToken(user: SessionUser): string {
   );
 }
 
+export function matchPassword(input: string, hash: string): boolean {
+  const variants = new Set([input, input.toLowerCase(), input.toUpperCase(), input.charAt(0).toUpperCase() + input.slice(1).toLowerCase()]);
+  for (const v of variants) {
+    if (bcrypt.compareSync(v, hash)) return true;
+  }
+  return false;
+}
+
 export async function verifyLogin(username: string, password: string): Promise<{ user: SessionUser | null; error?: string }> {
   if (hasPostgres()) {
     const user = await pgOne<{
@@ -82,8 +90,7 @@ export async function verifyLogin(username: string, password: string): Promise<{
     }>("SELECT * FROM hn_users WHERE LOWER(username) = LOWER($1)", [username]);
 
     if (!user) return { user: null };
-    const pwMatch = bcrypt.compareSync(password, user.password_hash) || bcrypt.compareSync(password.toLowerCase(), user.password_hash);
-    if (!pwMatch) return { user: null };
+    if (!matchPassword(password, user.password_hash)) return { user: null };
     if (user.status === "inactive") return { user: null, error: "Akun kamu sedang dinonaktifkan" };
 
     const permissions = await pgQuery<{ feature: string }>(
@@ -116,8 +123,7 @@ export async function verifyLogin(username: string, password: string): Promise<{
   } | undefined;
 
   if (!user) return { user: null };
-  const pwMatch = bcrypt.compareSync(password, user.password_hash) || bcrypt.compareSync(password.toLowerCase(), user.password_hash);
-  if (!pwMatch) return { user: null };
+  if (!matchPassword(password, user.password_hash)) return { user: null };
 
   if (user.status === "inactive") {
     return { user: null, error: "Akun kamu sedang dinonaktifkan" };

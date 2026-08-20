@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { getSession } from "@/lib/auth";
+import { getSession, matchPassword } from "@/lib/auth";
 import { hasPostgres, pgOne, pgQuery } from "@/lib/pg";
 import bcrypt from "bcryptjs";
 
@@ -27,8 +27,7 @@ export async function PUT(req: NextRequest) {
       const user = await pgOne<{ password_hash: string }>(
         "SELECT password_hash FROM hn_users WHERE id = $1", [session.id]
       );
-      const curPwMatch = !user || !(bcrypt.compareSync(body.currentPassword, user.password_hash) || bcrypt.compareSync(body.currentPassword.toLowerCase(), user.password_hash));
-      if (curPwMatch) {
+      if (!user || !matchPassword(body.currentPassword, user.password_hash)) {
         return NextResponse.json({ error: "Password lama salah" }, { status: 400 });
       }
       const hash = bcrypt.hashSync(body.newPassword.toLowerCase(), 10);
@@ -36,8 +35,7 @@ export async function PUT(req: NextRequest) {
     } else {
       const db = getDb();
       const user = db.prepare("SELECT password_hash FROM users WHERE id = ?").get(session.id) as { password_hash: string } | undefined;
-      const curPwMatch2 = !user || !(bcrypt.compareSync(body.currentPassword, user.password_hash) || bcrypt.compareSync(body.currentPassword.toLowerCase(), user.password_hash));
-      if (curPwMatch2) {
+      if (!user || !matchPassword(body.currentPassword, user.password_hash)) {
         return NextResponse.json({ error: "Password lama salah" }, { status: 400 });
       }
       const hash = bcrypt.hashSync(body.newPassword.toLowerCase(), 10);
