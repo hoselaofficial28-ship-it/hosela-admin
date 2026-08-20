@@ -32,7 +32,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     if (body.newPassword.length < 6) {
       return NextResponse.json({ error: "Password minimal 6 karakter" }, { status: 400 });
     }
-    const hash = bcrypt.hashSync(body.newPassword, 10);
+    const hash = bcrypt.hashSync(body.newPassword.toLowerCase(), 10);
     if (hasPostgres()) {
       const target = await pgOne<{ id: number }>("SELECT id FROM hn_users WHERE id = $1", [userId]);
       if (!target) return NextResponse.json({ error: "User tidak ditemukan" }, { status: 404 });

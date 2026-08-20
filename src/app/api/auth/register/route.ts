@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Bagian tidak valid" }, { status: 400 });
   }
 
-  const hash = bcrypt.hashSync(password, 10);
+  const hash = bcrypt.hashSync(password.toLowerCase(), 10);
   const permissions = getDefaultPermissions(department);
 
   if (hasPostgres()) {

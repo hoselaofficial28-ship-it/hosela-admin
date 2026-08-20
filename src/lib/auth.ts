@@ -82,7 +82,8 @@ export async function verifyLogin(username: string, password: string): Promise<{
     }>("SELECT * FROM hn_users WHERE LOWER(username) = LOWER($1)", [username]);
 
     if (!user) return { user: null };
-    if (!bcrypt.compareSync(password, user.password_hash)) return { user: null };
+    const pwMatch = bcrypt.compareSync(password, user.password_hash) || bcrypt.compareSync(password.toLowerCase(), user.password_hash);
+    if (!pwMatch) return { user: null };
     if (user.status === "inactive") return { user: null, error: "Akun kamu sedang dinonaktifkan" };
 
     const permissions = await pgQuery<{ feature: string }>(
@@ -115,7 +116,8 @@ export async function verifyLogin(username: string, password: string): Promise<{
   } | undefined;
 
   if (!user) return { user: null };
-  if (!bcrypt.compareSync(password, user.password_hash)) return { user: null };
+  const pwMatch = bcrypt.compareSync(password, user.password_hash) || bcrypt.compareSync(password.toLowerCase(), user.password_hash);
+  if (!pwMatch) return { user: null };
 
   if (user.status === "inactive") {
     return { user: null, error: "Akun kamu sedang dinonaktifkan" };

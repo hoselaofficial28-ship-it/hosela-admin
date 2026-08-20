@@ -27,18 +27,20 @@ export async function PUT(req: NextRequest) {
       const user = await pgOne<{ password_hash: string }>(
         "SELECT password_hash FROM hn_users WHERE id = $1", [session.id]
       );
-      if (!user || !bcrypt.compareSync(body.currentPassword, user.password_hash)) {
+      const curPwMatch = !user || !(bcrypt.compareSync(body.currentPassword, user.password_hash) || bcrypt.compareSync(body.currentPassword.toLowerCase(), user.password_hash));
+      if (curPwMatch) {
         return NextResponse.json({ error: "Password lama salah" }, { status: 400 });
       }
-      const hash = bcrypt.hashSync(body.newPassword, 10);
+      const hash = bcrypt.hashSync(body.newPassword.toLowerCase(), 10);
       await pgQuery("UPDATE hn_users SET password_hash = $1 WHERE id = $2", [hash, session.id]);
     } else {
       const db = getDb();
       const user = db.prepare("SELECT password_hash FROM users WHERE id = ?").get(session.id) as { password_hash: string } | undefined;
-      if (!user || !bcrypt.compareSync(body.currentPassword, user.password_hash)) {
+      const curPwMatch2 = !user || !(bcrypt.compareSync(body.currentPassword, user.password_hash) || bcrypt.compareSync(body.currentPassword.toLowerCase(), user.password_hash));
+      if (curPwMatch2) {
         return NextResponse.json({ error: "Password lama salah" }, { status: 400 });
       }
-      const hash = bcrypt.hashSync(body.newPassword, 10);
+      const hash = bcrypt.hashSync(body.newPassword.toLowerCase(), 10);
       db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(hash, session.id);
     }
 

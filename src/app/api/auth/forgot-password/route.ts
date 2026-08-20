@@ -102,7 +102,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "PIN salah" }, { status: 400 });
     }
 
-    const hash = bcrypt.hashSync(body.newPassword, 10);
+    const hash = bcrypt.hashSync(body.newPassword.toLowerCase(), 10);
 
     if (hasPostgres()) {
       await pgQuery("UPDATE hn_users SET password_hash = $1 WHERE id = $2", [hash, user.id]);
