@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { DEPARTMENTS, FEATURES, getDefaultPermissions } from "@/lib/permissions";
-import { hasPostgres, pgOne, pgTransaction } from "@/lib/pg";
+import { hasPostgres, pgOne, pgQuery, pgTransaction } from "@/lib/pg";
+import bcrypt from "bcryptjs";
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession();
@@ -16,6 +17,7 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
     status?: string;
     permissions?: string[];
     email?: string | null;
+    newPassword?: string;
   };
 
   if (!Number.isFinite(userId)) {
@@ -24,6 +26,24 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 
   if (userId === session.id && body.status && body.status !== "active") {
     return NextResponse.json({ error: "Owner tidak bisa menonaktifkan akun sendiri" }, { status: 400 });
+  }
+
+  if (body.newPassword) {
+    if (body.newPassword.length < 6) {
+      return NextResponse.json({ error: "Password minimal 6 karakter" }, { status: 400 });
+    }
+    const hash = bcrypt.hashSync(body.newPassword, 10);
+    if (hasPostgres()) {
+      const target = await pgOne<{ id: number }>("SELECT id FROM hn_users WHERE id = $1", [userId]);
+      if (!target) return NextResponse.json({ error: "User tidak ditemukan" }, { status: 404 });
+      await pgQuery("UPDATE hn_users SET password_hash = $1 WHERE id = $2", [hash, userId]);
+    } else {
+      const db = getDb();
+      const target = db.prepare("SELECT id FROM users WHERE id = ?").get(userId) as { id: number } | undefined;
+      if (!target) return NextResponse.json({ error: "User tidak ditemukan" }, { status: 404 });
+      db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(hash, userId);
+    }
+    return NextResponse.json({ success: true });
   }
 
   if (hasPostgres()) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Check, RotateCcw, Save, Shield, UserRound, UsersRound } from "lucide-react";
+import { Check, Key, RotateCcw, Save, Shield, UserRound, UsersRound, X } from "lucide-react";
 import Toast from "@/components/Toast";
 
 interface Department {
@@ -46,6 +46,9 @@ export default function UsersPage() {
   const [features, setFeatures] = useState<Feature[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<number | null>(null);
+  const [resetId, setResetId] = useState<number | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [resetting, setResetting] = useState(false);
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   useEffect(() => {
@@ -83,6 +86,28 @@ export default function UsersPage() {
         ? features.map((feature) => feature.key)
         : DEFAULT_PERMISSIONS[user.department || ""] || ["catatan", "rapat"],
     });
+  }
+
+  async function resetPassword(userId: number) {
+    if (!newPassword || newPassword.length < 6) {
+      setToast({ message: "Password minimal 6 karakter", type: "error" });
+      return;
+    }
+    setResetting(true);
+    const res = await fetch(`/api/users/${userId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ newPassword }),
+    });
+    if (res.ok) {
+      setToast({ message: "Password berhasil direset", type: "success" });
+      setResetId(null);
+      setNewPassword("");
+    } else {
+      const data = await res.json();
+      setToast({ message: data.error || "Gagal reset password", type: "error" });
+    }
+    setResetting(false);
   }
 
   async function saveUser(user: ManagedUser) {
@@ -208,9 +233,42 @@ export default function UsersPage() {
                   })}
                 </div>
 
+                {resetId === user.id && (
+                  <div className="flex items-center gap-2 pt-3 mt-3 border-t border-gray-100">
+                    <input
+                      type="password"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      placeholder="Password baru (min. 6 karakter)"
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => resetPassword(user.id)}
+                      disabled={resetting}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition"
+                    >
+                      {resetting ? "..." : "Simpan"}
+                    </button>
+                    <button
+                      onClick={() => { setResetId(null); setNewPassword(""); }}
+                      className="p-2 text-gray-400 hover:text-gray-600 transition"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap items-center justify-between gap-2 pt-4 mt-4 border-t border-gray-50">
                   <div className="text-xs text-gray-400">Terdaftar: {user.created_at}</div>
                   <div className="flex gap-2">
+                    <button
+                      onClick={() => { setResetId(resetId === user.id ? null : user.id); setNewPassword(""); }}
+                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-blue-50 text-blue-700 text-xs font-medium rounded-lg hover:bg-blue-100 transition"
+                    >
+                      <Key className="w-3.5 h-3.5" />
+                      Reset Password
+                    </button>
                     <button
                       onClick={() => resetDefault(user)}
                       disabled={owner}

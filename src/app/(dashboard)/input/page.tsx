@@ -52,8 +52,12 @@ const tabs: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: "express", label: "Pengiriman Kilat", icon: <Zap className="w-4 h-4" /> },
 ];
 
+function localDateStr(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
 function todayKey() {
-  return new Date().toISOString().split("T")[0];
+  return localDateStr(new Date());
 }
 
 function monthStart(date: string) {
@@ -62,7 +66,7 @@ function monthStart(date: string) {
 
 function monthEnd(date: string) {
   const [year, month] = date.split("-").map(Number);
-  return new Date(year, month, 0).toISOString().split("T")[0];
+  return localDateStr(new Date(year, month, 0));
 }
 
 function timeToHour(time: string) {

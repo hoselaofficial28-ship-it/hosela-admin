@@ -6,6 +6,7 @@ import {
   BarChart3, ClipboardEdit, History, LogOut, Menu, X,
   ListTodo, Settings, Bell, StickyNote, NotebookPen, UsersRound,
   ArrowLeftRight, ChevronDown, Shield, FlaskConical, Timer,
+  Key, Lock, Eye, EyeOff,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { hasPermission, type FeatureKey } from "@/lib/permissions";
@@ -58,6 +59,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [switchUsers, setSwitchUsers] = useState<{ id: number; name: string; role: string; username: string }[]>([]);
   const [userId, setUserId] = useState(0);
   const [switching, setSwitching] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showPinModal, setShowPinModal] = useState(false);
 
   const loadSession = useCallback(() => {
     fetch("/api/auth/me")
@@ -220,7 +224,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </nav>
 
         <div className="px-3 py-4 border-t border-gray-100 relative">
-          <button onClick={(userRole === "owner" || switchedFrom) ? openSwitcher : undefined}
+          <button onClick={() => setShowProfileMenu(!showProfileMenu)}
             className="flex items-center gap-3 px-3 mb-3 w-full text-left hover:bg-gray-50 rounded-lg py-1.5 transition"
           >
             <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${switchedFrom ? "bg-amber-100 text-amber-700" : "bg-gray-200 text-gray-600"}`}>
@@ -230,8 +234,36 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <span className="text-sm text-gray-700 truncate block">{userName || "User"}</span>
               {switchedFrom && <span className="text-[10px] text-amber-600">via {switchedFrom.name}</span>}
             </div>
-            {(userRole === "owner" || switchedFrom) && <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />}
+            <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
           </button>
+
+          {showProfileMenu && (
+            <div className="absolute bottom-full left-3 right-3 mb-1 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden z-50 animate-fade-in">
+              <button
+                onClick={() => { setShowProfileMenu(false); setShowPasswordModal(true); }}
+                className="flex items-center gap-3 px-3 py-2.5 w-full text-left hover:bg-gray-50 transition text-sm text-gray-700"
+              >
+                <Key className="w-4 h-4 text-gray-400" />
+                Ubah Password
+              </button>
+              <button
+                onClick={() => { setShowProfileMenu(false); setShowPinModal(true); }}
+                className="flex items-center gap-3 px-3 py-2.5 w-full text-left hover:bg-gray-50 transition text-sm text-gray-700 border-t border-gray-50"
+              >
+                <Lock className="w-4 h-4 text-gray-400" />
+                Ubah PIN
+              </button>
+              {(userRole === "owner" || switchedFrom) && (
+                <button
+                  onClick={() => { setShowProfileMenu(false); openSwitcher(); }}
+                  className="flex items-center gap-3 px-3 py-2.5 w-full text-left hover:bg-gray-50 transition text-sm text-gray-700 border-t border-gray-100"
+                >
+                  <ArrowLeftRight className="w-4 h-4 text-gray-400" />
+                  Pindah Akun
+                </button>
+              )}
+            </div>
+          )}
 
           {showSwitcher && (
             <div className="absolute bottom-full left-3 right-3 mb-1 bg-white rounded-xl shadow-xl border border-gray-200 overflow-hidden z-50 animate-fade-in">
@@ -304,6 +336,20 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               })}
             </nav>
             <div className="absolute bottom-0 left-0 right-0 px-3 py-4 border-t border-gray-100">
+              <button
+                onClick={() => { setSidebarOpen(false); setShowPasswordModal(true); }}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 w-full mb-1 transition"
+              >
+                <Key className="w-5 h-5" />
+                Ubah Password
+              </button>
+              <button
+                onClick={() => { setSidebarOpen(false); setShowPinModal(true); }}
+                className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium text-gray-600 hover:bg-gray-50 w-full mb-1 transition"
+              >
+                <Lock className="w-5 h-5" />
+                Ubah PIN
+              </button>
               {(userRole === "owner" || switchedFrom) && (
                 <button
                   onClick={openSwitcher}
@@ -322,8 +368,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       )}
 
-      {/* Account Switcher Overlay (click outside to close) */}
-      {showSwitcher && <div className="fixed inset-0 z-40" onClick={() => setShowSwitcher(false)} />}
+      {/* Profile Menu / Account Switcher Overlay (click outside to close) */}
+      {(showProfileMenu || showSwitcher) && <div className="fixed inset-0 z-40" onClick={() => { setShowProfileMenu(false); setShowSwitcher(false); }} />}
+
+      {/* Password Change Modal */}
+      {showPasswordModal && <PasswordModal onClose={() => setShowPasswordModal(false)} />}
+
+      {/* PIN Change Modal */}
+      {showPinModal && <PinModal onClose={() => setShowPinModal(false)} />}
 
       {/* Switching Account Overlay */}
       {switching && (
@@ -427,5 +479,125 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </div>
     </SessionProvider>
+  );
+}
+
+function PasswordModal({ onClose }: { onClose: () => void }) {
+  const [current, setCurrent] = useState("");
+  const [new1, setNew1] = useState("");
+  const [new2, setNew2] = useState("");
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+
+  async function handleSubmit() {
+    if (!current || !new1) { setMsg({ text: "Isi semua field", ok: false }); return; }
+    if (new1.length < 6) { setMsg({ text: "Password baru minimal 6 karakter", ok: false }); return; }
+    if (new1 !== new2) { setMsg({ text: "Konfirmasi password tidak cocok", ok: false }); return; }
+    setSaving(true);
+    const res = await fetch("/api/auth/account", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "change_password", currentPassword: current, newPassword: new1 }),
+    });
+    if (res.ok) {
+      setMsg({ text: "Password berhasil diubah!", ok: true });
+      setTimeout(onClose, 1200);
+    } else {
+      const data = await res.json();
+      setMsg({ text: data.error || "Gagal mengubah password", ok: false });
+    }
+    setSaving(false);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-5 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-4">
+          <Key className="w-5 h-5 text-blue-600" />
+          <h3 className="font-semibold text-gray-900">Ubah Password</h3>
+        </div>
+        <div className="space-y-3">
+          <div className="relative">
+            <input type={showCurrent ? "text" : "password"} value={current} onChange={(e) => setCurrent(e.target.value)}
+              placeholder="Password saat ini" className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" autoFocus />
+            <button type="button" onClick={() => setShowCurrent(!showCurrent)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+              {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+          <div className="relative">
+            <input type={showNew ? "text" : "password"} value={new1} onChange={(e) => setNew1(e.target.value)}
+              placeholder="Password baru (min. 6 karakter)" className="w-full px-3 py-2.5 pr-10 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+            <button type="button" onClick={() => setShowNew(!showNew)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">
+              {showNew ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+          <input type="password" value={new2} onChange={(e) => setNew2(e.target.value)}
+            placeholder="Konfirmasi password baru" className="w-full px-3 py-2.5 border border-gray-300 rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500" />
+          {msg && <p className={`text-xs font-medium ${msg.ok ? "text-green-600" : "text-red-600"}`}>{msg.text}</p>}
+          <div className="flex gap-2 pt-1">
+            <button onClick={handleSubmit} disabled={saving}
+              className="flex-1 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition">
+              {saving ? "Menyimpan..." : "Simpan"}
+            </button>
+            <button onClick={onClose} className="px-4 py-2.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition">
+              Batal
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PinModal({ onClose }: { onClose: () => void }) {
+  const [pin, setPin] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+
+  async function handleSubmit() {
+    if (!/^\d{4,6}$/.test(pin)) { setMsg({ text: "PIN harus 4-6 digit angka", ok: false }); return; }
+    setSaving(true);
+    const res = await fetch("/api/auth/account", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "change_pin", newPin: pin }),
+    });
+    if (res.ok) {
+      setMsg({ text: "PIN berhasil diubah!", ok: true });
+      setTimeout(onClose, 1200);
+    } else {
+      const data = await res.json();
+      setMsg({ text: data.error || "Gagal mengubah PIN", ok: false });
+    }
+    setSaving(false);
+  }
+
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-xs mx-4 p-5 animate-fade-in" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-4">
+          <Lock className="w-5 h-5 text-blue-600" />
+          <h3 className="font-semibold text-gray-900">Ubah PIN</h3>
+        </div>
+        <div className="space-y-3">
+          <input type="password" inputMode="numeric" maxLength={6} value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+            placeholder="PIN baru (4-6 digit)"
+            className="w-full px-3 py-3 border border-gray-300 rounded-lg text-lg text-center tracking-[0.5em] font-mono outline-none focus:ring-2 focus:ring-blue-500" autoFocus />
+          {msg && <p className={`text-xs font-medium text-center ${msg.ok ? "text-green-600" : "text-red-600"}`}>{msg.text}</p>}
+          <div className="flex gap-2">
+            <button onClick={handleSubmit} disabled={saving}
+              className="flex-1 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition">
+              {saving ? "Menyimpan..." : "Simpan"}
+            </button>
+            <button onClick={onClose} className="px-4 py-2.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-200 transition">
+              Batal
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -157,9 +157,10 @@ export async function POST(req: NextRequest) {
           INSERT INTO hn_daily_shipments (date, store_id, morning_quantity, afternoon_quantity, quantity, created_by)
           VALUES ($1, $2, $3, $4, $5, $6)
           ON CONFLICT(date, store_id) DO UPDATE SET
-            morning_quantity = EXCLUDED.morning_quantity,
-            afternoon_quantity = EXCLUDED.afternoon_quantity,
-            quantity = EXCLUDED.quantity,
+            morning_quantity = CASE WHEN EXCLUDED.morning_quantity > 0 THEN EXCLUDED.morning_quantity ELSE hn_daily_shipments.morning_quantity END,
+            afternoon_quantity = CASE WHEN EXCLUDED.afternoon_quantity > 0 THEN EXCLUDED.afternoon_quantity ELSE hn_daily_shipments.afternoon_quantity END,
+            quantity = CASE WHEN EXCLUDED.morning_quantity > 0 THEN EXCLUDED.morning_quantity ELSE hn_daily_shipments.morning_quantity END
+                     + CASE WHEN EXCLUDED.afternoon_quantity > 0 THEN EXCLUDED.afternoon_quantity ELSE hn_daily_shipments.afternoon_quantity END,
             updated_at = now()
         `, [date, s.store_id, morning, afternoon, total, session.username]);
       }
@@ -173,9 +174,10 @@ export async function POST(req: NextRequest) {
     INSERT INTO daily_shipments (date, store_id, morning_quantity, afternoon_quantity, quantity, created_by)
     VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(date, store_id) DO UPDATE SET
-      morning_quantity = excluded.morning_quantity,
-      afternoon_quantity = excluded.afternoon_quantity,
-      quantity = excluded.quantity,
+      morning_quantity = CASE WHEN excluded.morning_quantity > 0 THEN excluded.morning_quantity ELSE daily_shipments.morning_quantity END,
+      afternoon_quantity = CASE WHEN excluded.afternoon_quantity > 0 THEN excluded.afternoon_quantity ELSE daily_shipments.afternoon_quantity END,
+      quantity = CASE WHEN excluded.morning_quantity > 0 THEN excluded.morning_quantity ELSE daily_shipments.morning_quantity END
+               + CASE WHEN excluded.afternoon_quantity > 0 THEN excluded.afternoon_quantity ELSE daily_shipments.afternoon_quantity END,
       updated_at = datetime('now')
   `);
 
