@@ -1,13 +1,13 @@
-import type Database from "better-sqlite3";
+import type BetterSqlite3 from "better-sqlite3";
 import path from "path";
 import bcrypt from "bcryptjs";
 import fs from "fs";
 import { FEATURES, getDefaultPermissions } from "./permissions";
 
-function loadSqlite(): typeof import("better-sqlite3").default {
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require("better-sqlite3");
-}
+type Database = BetterSqlite3.Database;
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+function loadSqlite(): new (filename: string) => Database { return require("better-sqlite3"); }
 
 function getDbPath() {
   const localDbPath = path.join(process.cwd(), "hosela.db");
@@ -25,9 +25,9 @@ function getDbPath() {
 
 const DB_PATH = getDbPath();
 
-let _db: Database.Database | null = null;
+let _db: Database | null = null;
 
-export function getDb(): Database.Database {
+export function getDb(): Database {
   if (!_db) {
     const SqliteDatabase = loadSqlite();
     _db = new SqliteDatabase(DB_PATH);
@@ -38,7 +38,7 @@ export function getDb(): Database.Database {
   return _db;
 }
 
-function initializeDatabase(db: Database.Database) {
+function initializeDatabase(db: Database) {
   db.exec(`
     CREATE TABLE IF NOT EXISTS stores (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -310,7 +310,7 @@ function initializeDatabase(db: Database.Database) {
   seedUserPermissions(db);
 }
 
-function migrateDatabase(db: Database.Database) {
+function migrateDatabase(db: Database) {
   const userColumns = db.prepare("PRAGMA table_info(users)").all() as { name: string }[];
   const columnNames = new Set(userColumns.map((column) => column.name));
 
@@ -364,7 +364,7 @@ function migrateDatabase(db: Database.Database) {
   }
 }
 
-function seedUserPermissions(db: Database.Database) {
+function seedUserPermissions(db: Database) {
   const users = db.prepare("SELECT id, role, department FROM users").all() as { id: number; role: string; department: string | null }[];
   const upsert = db.prepare(`
     INSERT INTO user_permissions (user_id, feature, allowed)
