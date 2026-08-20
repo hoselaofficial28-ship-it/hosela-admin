@@ -79,7 +79,7 @@ export async function verifyLogin(username: string, password: string): Promise<{
       name: string;
       department: string | null;
       status: string | null;
-    }>("SELECT * FROM hn_users WHERE username = $1", [username]);
+    }>("SELECT * FROM hn_users WHERE LOWER(username) = LOWER($1)", [username]);
 
     if (!user) return { user: null };
     if (!bcrypt.compareSync(password, user.password_hash)) return { user: null };
@@ -104,7 +104,7 @@ export async function verifyLogin(username: string, password: string): Promise<{
   }
 
   const db = getDb();
-  const user = db.prepare("SELECT * FROM users WHERE username = ?").get(username) as {
+  const user = db.prepare("SELECT * FROM users WHERE LOWER(username) = LOWER(?)").get(username) as {
     id: number;
     username: string;
     password_hash: string;

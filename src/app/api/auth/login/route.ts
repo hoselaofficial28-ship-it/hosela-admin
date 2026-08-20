@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { verifyLogin, createToken, COOKIE_NAME } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
-  const { username, password } = await req.json();
+  const body = await req.json();
+  const username = (body.username || "").trim().toLowerCase();
+  const password = (body.password || "").trim();
 
   if (!username || !password) {
     return NextResponse.json({ error: "Username dan password wajib diisi" }, { status: 400 });

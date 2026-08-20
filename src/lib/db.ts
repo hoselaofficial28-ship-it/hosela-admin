@@ -1,8 +1,13 @@
-import Database from "better-sqlite3";
+import type Database from "better-sqlite3";
 import path from "path";
 import bcrypt from "bcryptjs";
 import fs from "fs";
 import { FEATURES, getDefaultPermissions } from "./permissions";
+
+function loadSqlite(): typeof import("better-sqlite3").default {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  return require("better-sqlite3");
+}
 
 function getDbPath() {
   const localDbPath = path.join(process.cwd(), "hosela.db");
@@ -24,7 +29,8 @@ let _db: Database.Database | null = null;
 
 export function getDb(): Database.Database {
   if (!_db) {
-    _db = new Database(DB_PATH);
+    const SqliteDatabase = loadSqlite();
+    _db = new SqliteDatabase(DB_PATH);
     _db.pragma("journal_mode = WAL");
     _db.pragma("foreign_keys = ON");
     initializeDatabase(_db);

@@ -6,7 +6,12 @@ import { hasPostgres, pgOne, pgTransaction } from "@/lib/pg";
 import bcrypt from "bcryptjs";
 
 export async function POST(req: NextRequest) {
-  const { username, password, name, email, department } = await req.json();
+  const body = await req.json();
+  const username = (body.username || "").trim().toLowerCase();
+  const password = (body.password || "").trim();
+  const name = (body.name || "").trim();
+  const email = (body.email || "").trim();
+  const department = (body.department || "").trim();
 
   if (!username || !password || !name || !department) {
     return NextResponse.json({ error: "Username, password, nama, dan bagian wajib diisi" }, { status: 400 });
@@ -28,7 +33,7 @@ export async function POST(req: NextRequest) {
   const permissions = getDefaultPermissions(department);
 
   if (hasPostgres()) {
-    const existing = await pgOne("SELECT id FROM hn_users WHERE username = $1", [username]);
+    const existing = await pgOne("SELECT id FROM hn_users WHERE LOWER(username) = LOWER($1)", [username]);
     if (existing) {
       return NextResponse.json({ error: "Username sudah digunakan" }, { status: 400 });
     }
@@ -79,7 +84,7 @@ export async function POST(req: NextRequest) {
 
   const db = getDb();
 
-  const existing = db.prepare("SELECT id FROM users WHERE username = ?").get(username);
+  const existing = db.prepare("SELECT id FROM users WHERE LOWER(username) = LOWER(?)").get(username);
   if (existing) {
     return NextResponse.json({ error: "Username sudah digunakan" }, { status: 400 });
   }
