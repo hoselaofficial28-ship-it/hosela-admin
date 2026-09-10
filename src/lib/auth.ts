@@ -8,6 +8,10 @@ import { hasPostgres, pgOne, pgQuery } from "./pg";
 const JWT_SECRET = process.env.JWT_SECRET || "hosela-admin-secret-key-2026";
 const COOKIE_NAME = "hosela_session";
 
+export function normalizeUsername(username: string) {
+  return username.trim().toLowerCase();
+}
+
 export interface SessionUser {
   id: number;
   username: string;
@@ -70,6 +74,8 @@ export function createToken(user: SessionUser): string {
 }
 
 export async function verifyLogin(username: string, password: string): Promise<{ user: SessionUser | null; error?: string }> {
+  const normalizedUsername = normalizeUsername(username);
+
   if (hasPostgres()) {
     const user = await pgOne<{
       id: number;
@@ -79,7 +85,7 @@ export async function verifyLogin(username: string, password: string): Promise<{
       name: string;
       department: string | null;
       status: string | null;
-    }>("SELECT * FROM hn_users WHERE username = $1", [username]);
+    }>("SELECT * FROM hn_users WHERE LOWER(username) = $1", [normalizedUsername]);
 
     if (!user) return { user: null };
     if (!bcrypt.compareSync(password, user.password_hash)) return { user: null };
@@ -104,7 +110,7 @@ export async function verifyLogin(username: string, password: string): Promise<{
   }
 
   const db = getDb();
-  const user = db.prepare("SELECT * FROM users WHERE username = ?").get(username) as {
+  const user = db.prepare("SELECT * FROM users WHERE LOWER(username) = ?").get(normalizedUsername) as {
     id: number;
     username: string;
     password_hash: string;

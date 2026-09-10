@@ -9,11 +9,31 @@ export async function PUT(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
 
   const body = await req.json() as {
-    action: "change_password" | "change_pin";
+    action: "change_password" | "change_pin" | "set_email";
     currentPassword?: string;
     newPassword?: string;
     newPin?: string;
+    email?: string;
   };
+
+  if (body.action === "set_email") {
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    if (!email) {
+      return NextResponse.json({ error: "Gmail wajib diisi" }, { status: 400 });
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return NextResponse.json({ error: "Format Gmail tidak valid" }, { status: 400 });
+    }
+
+    if (hasPostgres()) {
+      await pgQuery("UPDATE hn_users SET email = $1 WHERE id = $2", [email, session.id]);
+    } else {
+      const db = getDb();
+      db.prepare("UPDATE users SET email = ? WHERE id = ?").run(email, session.id);
+    }
+
+    return NextResponse.json({ success: true, email });
+  }
 
   if (body.action === "change_password") {
     if (!body.currentPassword || !body.newPassword) {

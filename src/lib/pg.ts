@@ -100,6 +100,8 @@ async function initializePostgres() {
       status TEXT DEFAULT 'active' CHECK(status IN ('pending', 'active', 'inactive')),
       name TEXT,
       email TEXT,
+      password_reset_code_hash TEXT,
+      password_reset_expires_at TIMESTAMPTZ,
       created_at TIMESTAMPTZ DEFAULT now()
     );
 
@@ -383,6 +385,20 @@ async function runMigrations(pool: Pool) {
   );
   if (pinCol.rows.length === 0) {
     await pool.query(`ALTER TABLE hn_users ADD COLUMN pin_hash TEXT`);
+  }
+
+  const resetCodeCol = await pool.query(
+    `SELECT column_name FROM information_schema.columns WHERE table_name = 'hn_users' AND column_name = 'password_reset_code_hash'`
+  );
+  if (resetCodeCol.rows.length === 0) {
+    await pool.query(`ALTER TABLE hn_users ADD COLUMN password_reset_code_hash TEXT`);
+  }
+
+  const resetExpiresCol = await pool.query(
+    `SELECT column_name FROM information_schema.columns WHERE table_name = 'hn_users' AND column_name = 'password_reset_expires_at'`
+  );
+  if (resetExpiresCol.rows.length === 0) {
+    await pool.query(`ALTER TABLE hn_users ADD COLUMN password_reset_expires_at TIMESTAMPTZ`);
   }
 }
 

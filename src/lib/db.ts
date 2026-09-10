@@ -119,6 +119,8 @@ function initializeDatabase(db: Database.Database) {
       status TEXT DEFAULT 'active' CHECK(status IN ('pending', 'active', 'inactive')),
       name TEXT,
       email TEXT,
+      password_reset_code_hash TEXT,
+      password_reset_expires_at TEXT,
       created_at TEXT DEFAULT (datetime('now'))
     );
 
@@ -314,6 +316,14 @@ function migrateDatabase(db: Database.Database) {
 
   if (!columnNames.has("status")) {
     db.exec("ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active'");
+  }
+
+  if (!columnNames.has("password_reset_code_hash")) {
+    db.exec("ALTER TABLE users ADD COLUMN password_reset_code_hash TEXT");
+  }
+
+  if (!columnNames.has("password_reset_expires_at")) {
+    db.exec("ALTER TABLE users ADD COLUMN password_reset_expires_at TEXT");
   }
 
   db.prepare("UPDATE users SET status = 'active' WHERE status IS NULL").run();

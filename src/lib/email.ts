@@ -78,3 +78,37 @@ export async function sendReminderEmail(to: string, taskTitle: string, deadline:
     return false;
   }
 }
+
+export async function sendPasswordResetCodeEmail(to: string, name: string | null, code: string) {
+  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    console.log(`[Email Reset] SMTP belum dikonfigurasi. Kode reset untuk ${to} dilewati.`);
+    return false;
+  }
+
+  try {
+    await transporter.sendMail({
+      from: `"Hosela Notion" <${process.env.SMTP_USER}>`,
+      to,
+      subject: "Kode Reset Password Hosela Notion",
+      html: `
+        <div style="font-family: sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
+          <div style="background: #2563eb; color: white; padding: 16px 20px; border-radius: 12px 12px 0 0;">
+            <h2 style="margin: 0; font-size: 18px;">Reset Password Hosela Notion</h2>
+          </div>
+          <div style="background: #f8fafc; padding: 20px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+            <p style="color: #334155; margin: 0 0 12px;">Halo ${name || "tim Hosela"},</p>
+            <p style="color: #475569; margin: 0 0 14px;">Masukkan kode ini di halaman reset password:</p>
+            <div style="background: white; border: 1px solid #cbd5e1; border-radius: 10px; padding: 16px; text-align: center; margin: 16px 0;">
+              <strong style="font-size: 28px; letter-spacing: 6px; color: #0f172a;">${code}</strong>
+            </div>
+            <p style="color: #64748b; font-size: 13px; margin: 0;">Kode berlaku 15 menit. Kalau bukan kamu yang meminta reset password, abaikan email ini.</p>
+          </div>
+        </div>
+      `,
+    });
+    return true;
+  } catch (err) {
+    console.error("[Email Reset] Gagal kirim:", err);
+    return false;
+  }
+}

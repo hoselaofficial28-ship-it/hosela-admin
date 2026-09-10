@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyLogin, createToken, COOKIE_NAME } from "@/lib/auth";
+import { verifyLogin, createToken, COOKIE_NAME, normalizeUsername } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   const { username, password } = await req.json();
+  const normalizedUsername = typeof username === "string" ? normalizeUsername(username) : "";
 
-  if (!username || !password) {
+  if (!normalizedUsername || !password) {
     return NextResponse.json({ error: "Username dan password wajib diisi" }, { status: 400 });
   }
 
-  const { user, error } = await verifyLogin(username, password);
+  const { user, error } = await verifyLogin(normalizedUsername, password);
   if (!user) {
     return NextResponse.json({ error: error || "Username atau password salah" }, { status: 401 });
   }

@@ -1,114 +1,139 @@
+import { randomInt } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { normalizeUsername } from "@/lib/auth";
 import { getDb } from "@/lib/db";
+import { sendPasswordResetCodeEmail } from "@/lib/email";
 import { hasPostgres, pgOne, pgQuery } from "@/lib/pg";
 import bcrypt from "bcryptjs";
 
+function normalizeEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+function createResetCode() {
+  return randomInt(100000, 1000000).toString();
+}
+
 export async function POST(req: NextRequest) {
   const body = await req.json() as {
-    step: "verify_user" | "verify_pin" | "reset";
+    step: "request_code" | "reset";
     username?: string;
-    pin?: string;
+    email?: string;
+    code?: string;
     newPassword?: string;
   };
 
-  if (body.step === "verify_user") {
-    if (!body.username) {
-      return NextResponse.json({ error: "Username wajib diisi" }, { status: 400 });
+  const username = typeof body.username === "string" ? normalizeUsername(body.username) : "";
+  const email = typeof body.email === "string" ? normalizeEmail(body.email) : "";
+
+  if (body.step === "request_code") {
+    if (!username || !email) {
+      return NextResponse.json({ error: "Username dan Gmail terdaftar wajib diisi" }, { status: 400 });
     }
 
-    let user: { id: number; name: string | null; pin_hash: string | null } | null = null;
+    let user: { id: number; name: string | null; email: string | null } | null = null;
 
     if (hasPostgres()) {
-      user = await pgOne<{ id: number; name: string | null; pin_hash: string | null }>(
-        "SELECT id, name, pin_hash FROM hn_users WHERE username = $1 AND status = 'active'",
-        [body.username.trim().toLowerCase()]
+      user = await pgOne<{ id: number; name: string | null; email: string | null }>(
+        "SELECT id, name, email FROM hn_users WHERE lower(trim(username)) = $1 AND COALESCE(status, 'active') = 'active'",
+        [username]
       );
     } else {
       const db = getDb();
       user = db.prepare(
-        "SELECT id, name, pin_hash FROM users WHERE username = ? AND status = 'active'"
-      ).get(body.username.trim().toLowerCase()) as typeof user;
+        "SELECT id, name, email FROM users WHERE LOWER(TRIM(username)) = ? AND COALESCE(status, 'active') = 'active'"
+      ).get(username) as typeof user;
     }
 
     if (!user) {
       return NextResponse.json({ error: "Username tidak ditemukan" }, { status: 404 });
     }
 
-    if (!user.pin_hash) {
-      return NextResponse.json({ error: "Akun ini belum memiliki PIN. Hubungi owner untuk reset password." }, { status: 400 });
+    if (!user.email) {
+      return NextResponse.json({ error: "Akun ini belum punya Gmail terdaftar. Minta owner tambahkan Gmail akun dulu." }, { status: 400 });
     }
 
-    return NextResponse.json({ success: true, name: user.name, userId: user.id });
-  }
-
-  if (body.step === "verify_pin") {
-    if (!body.username || !body.pin) {
-      return NextResponse.json({ error: "Username dan PIN wajib diisi" }, { status: 400 });
+    if (normalizeEmail(user.email) !== email) {
+      return NextResponse.json({ error: "Gmail tidak cocok dengan akun ini" }, { status: 400 });
     }
 
-    let user: { id: number; pin_hash: string | null } | null = null;
+    const code = createResetCode();
+    const codeHash = bcrypt.hashSync(code, 10);
+    const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
 
     if (hasPostgres()) {
-      user = await pgOne<{ id: number; pin_hash: string | null }>(
-        "SELECT id, pin_hash FROM hn_users WHERE username = $1 AND status = 'active'",
-        [body.username.trim().toLowerCase()]
+      await pgQuery(
+        "UPDATE hn_users SET password_reset_code_hash = $1, password_reset_expires_at = $2 WHERE id = $3",
+        [codeHash, expiresAt, user.id]
       );
     } else {
       const db = getDb();
-      user = db.prepare(
-        "SELECT id, pin_hash FROM users WHERE username = ? AND status = 'active'"
-      ).get(body.username.trim().toLowerCase()) as typeof user;
+      db.prepare(
+        "UPDATE users SET password_reset_code_hash = ?, password_reset_expires_at = ? WHERE id = ?"
+      ).run(codeHash, expiresAt, user.id);
     }
 
-    if (!user || !user.pin_hash) {
-      return NextResponse.json({ error: "User tidak ditemukan" }, { status: 404 });
+    const sent = await sendPasswordResetCodeEmail(user.email, user.name, code);
+    if (!sent) {
+      return NextResponse.json({ error: "Email reset belum terkirim. Cek konfigurasi SMTP di server." }, { status: 500 });
     }
 
-    if (!bcrypt.compareSync(body.pin, user.pin_hash)) {
-      return NextResponse.json({ error: "PIN salah" }, { status: 400 });
-    }
-
-    return NextResponse.json({ success: true, verified: true });
+    return NextResponse.json({ success: true, name: user.name, message: "Kode reset sudah dikirim ke Gmail terdaftar." });
   }
 
   if (body.step === "reset") {
-    if (!body.username || !body.pin || !body.newPassword) {
-      return NextResponse.json({ error: "Data tidak lengkap" }, { status: 400 });
+    const code = typeof body.code === "string" ? body.code.trim() : "";
+
+    if (!username || !email || !code || !body.newPassword) {
+      return NextResponse.json({ error: "Username, Gmail, kode, dan password baru wajib diisi" }, { status: 400 });
     }
 
     if (body.newPassword.length < 6) {
       return NextResponse.json({ error: "Password baru minimal 6 karakter" }, { status: 400 });
     }
 
-    let user: { id: number; pin_hash: string | null } | null = null;
+    let user: { id: number; email: string | null; password_reset_code_hash: string | null; password_reset_expires_at: string | null } | null = null;
 
     if (hasPostgres()) {
-      user = await pgOne<{ id: number; pin_hash: string | null }>(
-        "SELECT id, pin_hash FROM hn_users WHERE username = $1 AND status = 'active'",
-        [body.username.trim().toLowerCase()]
+      user = await pgOne<{ id: number; email: string | null; password_reset_code_hash: string | null; password_reset_expires_at: string | null }>(
+        "SELECT id, email, password_reset_code_hash, password_reset_expires_at FROM hn_users WHERE lower(trim(username)) = $1 AND COALESCE(status, 'active') = 'active'",
+        [username]
       );
     } else {
       const db = getDb();
       user = db.prepare(
-        "SELECT id, pin_hash FROM users WHERE username = ? AND status = 'active'"
-      ).get(body.username.trim().toLowerCase()) as typeof user;
+        "SELECT id, email, password_reset_code_hash, password_reset_expires_at FROM users WHERE LOWER(TRIM(username)) = ? AND COALESCE(status, 'active') = 'active'"
+      ).get(username) as typeof user;
     }
 
-    if (!user || !user.pin_hash) {
-      return NextResponse.json({ error: "User tidak ditemukan" }, { status: 404 });
+    if (!user || !user.email || normalizeEmail(user.email) !== email) {
+      return NextResponse.json({ error: "Data akun tidak cocok" }, { status: 400 });
     }
 
-    if (!bcrypt.compareSync(body.pin, user.pin_hash)) {
-      return NextResponse.json({ error: "PIN salah" }, { status: 400 });
+    if (!user.password_reset_code_hash || !user.password_reset_expires_at) {
+      return NextResponse.json({ error: "Minta kode reset dulu" }, { status: 400 });
+    }
+
+    if (new Date(user.password_reset_expires_at).getTime() < Date.now()) {
+      return NextResponse.json({ error: "Kode reset sudah kedaluwarsa. Minta kode baru." }, { status: 400 });
+    }
+
+    if (!bcrypt.compareSync(code, user.password_reset_code_hash)) {
+      return NextResponse.json({ error: "Kode reset salah" }, { status: 400 });
     }
 
     const hash = bcrypt.hashSync(body.newPassword, 10);
 
     if (hasPostgres()) {
-      await pgQuery("UPDATE hn_users SET password_hash = $1 WHERE id = $2", [hash, user.id]);
+      await pgQuery(
+        "UPDATE hn_users SET password_hash = $1, password_reset_code_hash = NULL, password_reset_expires_at = NULL WHERE id = $2",
+        [hash, user.id]
+      );
     } else {
       const db = getDb();
-      db.prepare("UPDATE users SET password_hash = ? WHERE id = ?").run(hash, user.id);
+      db.prepare(
+        "UPDATE users SET password_hash = ?, password_reset_code_hash = NULL, password_reset_expires_at = NULL WHERE id = ?"
+      ).run(hash, user.id);
     }
 
     return NextResponse.json({ success: true });

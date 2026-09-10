@@ -6,7 +6,7 @@ import {
   BarChart3, ClipboardEdit, History, LogOut, Menu, X,
   ListTodo, Settings, Bell, StickyNote, NotebookPen, UsersRound,
   ArrowLeftRight, ChevronDown, Shield, FlaskConical, Timer,
-  Key, Lock, Eye, EyeOff,
+  Key, Lock, Eye, EyeOff, Mail,
 } from "lucide-react";
 import { useState, useEffect, useCallback } from "react";
 import { hasPermission, type FeatureKey } from "@/lib/permissions";
@@ -48,6 +48,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userName, setUserName] = useState("");
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userRole, setUserRole] = useState<string>("");
   const [userPermissions, setUserPermissions] = useState<string[]>([]);
   const [sessionLoaded, setSessionLoaded] = useState(false);
@@ -75,6 +76,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       .then((d) => {
         if (d?.user) {
           setUserName(d.user.name);
+          setUserEmail(d.user.email || null);
           setUserRole(d.user.role);
           setUserId(d.user.id);
           setUserPermissions(d.user.permissions || []);
@@ -184,6 +186,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   const sessionValue = { userRole, userName, userPermissions, sessionLoaded };
+  const needsEmail = sessionLoaded && userRole !== "" && !userEmail;
 
   return (
     <SessionProvider value={sessionValue}>
@@ -377,6 +380,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       {/* PIN Change Modal */}
       {showPinModal && <PinModal onClose={() => setShowPinModal(false)} />}
 
+      {/* Required Email Modal */}
+      {needsEmail && <RequiredEmailModal userName={userName} onSaved={(email) => setUserEmail(email)} onLogout={handleLogout} />}
+
       {/* Switching Account Overlay */}
       {switching && (
         <div className="fixed inset-0 z-[60] bg-white/80 backdrop-blur-sm flex items-center justify-center">
@@ -479,6 +485,108 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </div>
     </SessionProvider>
+  );
+}
+
+function RequiredEmailModal({
+  userName,
+  onSaved,
+  onLogout,
+}: {
+  userName: string;
+  onSaved: (email: string) => void;
+  onLogout: () => void;
+}) {
+  const [email, setEmail] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedEmail) {
+      setMsg({ text: "Gmail wajib diisi", ok: false });
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      setMsg({ text: "Format Gmail tidak valid", ok: false });
+      return;
+    }
+
+    setSaving(true);
+    setMsg(null);
+    try {
+      const res = await fetch("/api/auth/account", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_email", email: normalizedEmail }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMsg({ text: data.error || "Gmail gagal disimpan", ok: false });
+        return;
+      }
+      onSaved(data.email || normalizedEmail);
+    } catch {
+      setMsg({ text: "Terjadi kesalahan. Coba lagi.", ok: false });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/50 px-4">
+      <form onSubmit={handleSubmit} className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl animate-fade-in">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center">
+            <Mail className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="font-semibold text-gray-900">Lengkapi Gmail</h3>
+            <p className="text-xs text-gray-500">Untuk reset password akun</p>
+          </div>
+        </div>
+
+        <div className="bg-blue-50 rounded-lg p-3 text-sm text-blue-800 mb-4">
+          Halo <strong>{userName || "User"}</strong>, isi Gmail sekali saja supaya akun ini bisa reset password sendiri nanti.
+        </div>
+
+        <label className="block text-sm font-medium text-gray-700 mb-1">Gmail Aktif</label>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value.toLowerCase())}
+          className="w-full px-4 py-2.5 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition"
+          placeholder="email@gmail.com"
+          autoComplete="email"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          required
+          autoFocus
+        />
+
+        {msg && <p className={`mt-3 text-xs font-medium ${msg.ok ? "text-green-600" : "text-red-600"}`}>{msg.text}</p>}
+
+        <div className="flex gap-2 mt-5">
+          <button
+            type="submit"
+            disabled={saving}
+            className="flex-1 py-2.5 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-700 disabled:opacity-50 transition"
+          >
+            {saving ? "Menyimpan..." : "Simpan Gmail"}
+          </button>
+          <button
+            type="button"
+            onClick={onLogout}
+            className="px-4 py-2.5 bg-gray-100 text-gray-700 text-sm font-medium rounded-xl hover:bg-gray-200 transition"
+          >
+            Keluar
+          </button>
+        </div>
+      </form>
+    </div>
   );
 }
 

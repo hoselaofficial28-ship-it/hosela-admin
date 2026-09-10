@@ -1,23 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
 import { DEPARTMENTS, getDefaultPermissions } from "@/lib/permissions";
-import { COOKIE_NAME, createToken } from "@/lib/auth";
+import { COOKIE_NAME, createToken, normalizeUsername } from "@/lib/auth";
 import { hasPostgres, pgOne, pgTransaction } from "@/lib/pg";
 import bcrypt from "bcryptjs";
 
 export async function POST(req: NextRequest) {
   const { username, password, name, email, department } = await req.json();
+  const normalizedUsername = typeof username === "string" ? normalizeUsername(username) : "";
+  const normalizedEmail = typeof email === "string" ? email.trim().toLowerCase() : "";
 
-  if (!username || !password || !name || !department) {
-    return NextResponse.json({ error: "Username, password, nama, dan bagian wajib diisi" }, { status: 400 });
+  if (!normalizedUsername || !password || !name || !normalizedEmail || !department) {
+    return NextResponse.json({ error: "Username, password, nama, Gmail, dan bagian wajib diisi" }, { status: 400 });
   }
 
-  if (username.length < 3) {
+  if (normalizedUsername.length < 3) {
     return NextResponse.json({ error: "Username minimal 3 karakter" }, { status: 400 });
   }
 
   if (password.length < 6) {
     return NextResponse.json({ error: "Password minimal 6 karakter" }, { status: 400 });
+  }
+
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+    return NextResponse.json({ error: "Format Gmail tidak valid" }, { status: 400 });
   }
 
   if (!DEPARTMENTS.some((item) => item.key === department)) {
@@ -28,7 +34,7 @@ export async function POST(req: NextRequest) {
   const permissions = getDefaultPermissions(department);
 
   if (hasPostgres()) {
-    const existing = await pgOne("SELECT id FROM hn_users WHERE username = $1", [username]);
+    const existing = await pgOne("SELECT id FROM hn_users WHERE LOWER(username) = $1", [normalizedUsername]);
     if (existing) {
       return NextResponse.json({ error: "Username sudah digunakan" }, { status: 400 });
     }
@@ -38,7 +44,7 @@ export async function POST(req: NextRequest) {
         INSERT INTO hn_users (username, password_hash, role, department, status, name, email)
         VALUES ($1, $2, 'admin', $3, 'active', $4, $5)
         RETURNING id
-      `, [username, hash, department, name, email || null]);
+      `, [normalizedUsername, hash, department, name, normalizedEmail]);
 
       const id = result.rows[0].id;
       for (const feature of permissions) {
@@ -52,7 +58,7 @@ export async function POST(req: NextRequest) {
 
     const user = {
       id: userId,
-      username,
+      username: normalizedUsername,
       role: "admin",
       name,
       department,
@@ -79,14 +85,14 @@ export async function POST(req: NextRequest) {
 
   const db = getDb();
 
-  const existing = db.prepare("SELECT id FROM users WHERE username = ?").get(username);
+  const existing = db.prepare("SELECT id FROM users WHERE LOWER(username) = ?").get(normalizedUsername);
   if (existing) {
     return NextResponse.json({ error: "Username sudah digunakan" }, { status: 400 });
   }
 
   const result = db.prepare(
     "INSERT INTO users (username, password_hash, role, department, status, name, email) VALUES (?, ?, 'admin', ?, 'active', ?, ?)"
-  ).run(username, hash, department, name, email || null);
+  ).run(normalizedUsername, hash, department, name, normalizedEmail);
 
   const userId = Number(result.lastInsertRowid);
   const insertPermission = db.prepare(`
@@ -98,7 +104,7 @@ export async function POST(req: NextRequest) {
 
   const user = {
     id: userId,
-    username,
+    username: normalizedUsername,
     role: "admin",
     name,
     department,
