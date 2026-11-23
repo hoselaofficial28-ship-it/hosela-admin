@@ -17,6 +17,12 @@ Ada kendala wajib disertai alasan dan tidak menutup pengingat. Riwayat menyimpan
 nama pelaksana, waktu, catatan serta salinan gambar/permintaan saat aktivitas.
 Perubahan oleh owner menaikkan versi, membuka ulang pesanan, dan mempertahankan
 semua riwayat. Tidak tersedia penghapusan catatan agar bukti tetap tersimpan.
+Foto pesanan selesai tersedia selama 7 × 24 jam dari waktu konfirmasi selesai.
+Setelah batas itu, foto tidak dilayani lagi oleh API dan dihapus dari tabel
+pesanan serta seluruh salinan gambar pada riwayat aktivitas. Catatan, nama
+pelaksana, waktu, dan status tetap tersimpan. Foto pesanan aktif tidak dihapus.
+Membuka ulang pesanan yang fotonya sudah kedaluwarsa memerlukan unggahan baru
+jika masih membutuhkan gambar referensi.
 Tab selesai menampilkan jumlah seluruh pesanan selesai. Riwayat dimuat 20
 pesanan per halaman, diurutkan berdasarkan waktu penyelesaian terbaru; tombol
 Muat lebih banyak membuka halaman berikutnya. Pencarian nomor pesanan, pembeli,
@@ -29,6 +35,29 @@ Pindah tab, keluar dan masuk menu, memuat ulang halaman, atau berganti hari
 mengaktifkan kewajiban membaca kembali. Penundaan tidak mencatat pengakuan
 membaca dan tidak berlaku untuk admin lain. Tombol Tindak lanjuti juga membuka
 pengingat membaca jika owner ingin langsung menyelesaikan pesanan tersebut.
+Setelah mengakui membaca, pengguna langsung kembali ke dialog tindak lanjut
+yang dipilih. Respons polling lama tidak boleh menimpa hasil tindakan terbaru;
+polling berhenti sementara selama penyimpanan dan saat tab browser tidak aktif.
+
+Foto dimuat terpisah melalui endpoint login `/api/custom-orders/photo`.
+Daftar dan riwayat tidak mengirim foto base64 berulang. Riwayat pembacaan dan
+konfirmasi baru hanya menyimpan referensi gambar ke versi permintaannya.
+Formulir Ubah permintaan mengambil foto asli hanya ketika dibuka oleh owner.
+
+## Pembersihan foto otomatis
+
+Pembersihan berjalan otomatis ketika API pesanan custom digunakan, paling
+sering sekali per menit per proses. Meski belum dibersihkan secara fisik,
+endpoint foto langsung menolak foto yang melewati 7 hari. Tidak perlu migrasi
+skema tambahan.
+
+`vercel.json` juga menjadwalkan `/api/cron/custom-order-photos` setiap hari pada
+00:00 UTC. Untuk berjalan tanpa pengguna membuka aplikasi, atur `CRON_SECRET`
+di Vercel; endpoint menolak permintaan tanpa secret yang cocok. Aktivasi cron
+produksi belum dapat diverifikasi karena akses Vercel belum tersedia. Ketika
+cron aktif, penghapusan fisik dilakukan saat akses berikutnya atau jadwal harian
+berikutnya; penutupan akses foto berlaku tepat di batas 7 hari.
+Konfigurasi mengikuti [panduan resmi Vercel](https://vercel.com/docs/cron-jobs/manage-cron-jobs).
 
 ## Aktivasi setelah persetujuan owner
 
@@ -69,10 +98,11 @@ dilakukan saat aktivasi.
 | `src/lib/custom-order-types.ts` | Validasi data, tipe data dan hari operasional WIB. |
 | `migrations/20261121-custom-orders.sql` | Dua tabel dan dua indeks baru, tanpa mengubah tabel lama. |
 | `scripts/migrate-custom-orders.mjs` | Aktivasi eksplisit menggunakan `--apply`. |
-| `scripts/test-custom-orders.mjs` | 19 pengujian logika dan API menggunakan SQLite di memori, termasuk riwayat lebih dari 100 pesanan dan penundaan popup owner. |
+| `scripts/test-custom-orders.mjs` | 22 pengujian logika dan API menggunakan SQLite di memori, termasuk retensi foto, otorisasi, dan ukuran payload. |
+| `scripts/test-custom-orders-ui.mjs` | Simulasi handler komponen: simpan owner, tindak lanjut setelah membaca, respons jaringan lama, klik ganda, dan selesai. Tidak membuka browser atau database operasional. |
 | `scripts/test-db-initialization.mjs` | Dua pengujian pembukaan database lama dan pemulihan setelah gagal inisialisasi. |
 
-Pemeriksaan implementasi: 19 pengujian custom dan dua pengujian database lolos, lint semua berkas fitur lolos,
+Pemeriksaan implementasi: 22 pengujian custom, empat skenario handler UI, dan dua pengujian database lolos, lint semua berkas fitur lolos,
 build Next.js lolos. Lint global masih melaporkan 18 error di berkas lama:
 empat script migrasi/pemulihan CommonJS, Dashboard, Lab Riset dan Rapat.
 Bagian tersebut belum diubah dalam pekerjaan ini. Pengujian browser PC/HP

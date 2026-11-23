@@ -12,8 +12,9 @@ const input = 'w-full min-h-11 rounded-lg border border-gray-300 p-3 text-base';
 const time = (value: string) => new Date(value).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'medium', timeStyle: 'short' });
 
 async function request(url: string, body?: Record<string, unknown>) {
-  const res = await fetch(url, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : { cache: 'no-store' });
-  const data = await res.json();
+  const signal = AbortSignal.timeout(20000);
+  const res = await fetch(url, body ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal } : { cache: 'no-store', signal });
+  const data = await res.json().catch(() => { throw new Error(`Server tidak mengirim data yang valid (${res.status}). Coba lagi.`); });
   if (!res.ok) throw new Error(data.error || `Permintaan gagal (${res.status}).`);
   return data;
 }
@@ -33,13 +34,16 @@ function Modal({ title, children, onClose }: { title: string; children: ReactNod
 
 function OrderDetail({ order }: { order: CustomOrder }) {
   const [enlarged, setEnlarged] = useState(false);
+  const [failedImage, setFailedImage] = useState('');
   return <div className="space-y-3">
     <div className="flex flex-wrap gap-2 text-sm"><span className="rounded bg-blue-50 px-2 py-1 font-semibold text-blue-800">{order.store_name || `Toko #${order.store_id}`}</span><span className="rounded bg-gray-100 px-2 py-1">Target kirim: {order.ship_date}</span><span className="rounded bg-amber-100 px-2 py-1">{order.status === 'done' ? 'Selesai' : order.status === 'issue' ? 'Ada kendala' : 'Perlu diproses'}</span></div>
     <h3 className="break-words text-lg font-bold">{order.order_ref}</h3>
-    {order.image && <button type="button" onClick={() => setEnlarged(!enlarged)} className="block w-full rounded-lg border border-gray-200 p-2 text-left" aria-expanded={enlarged}>
-      <Image unoptimized src={order.image} alt={`Referensi custom ${order.order_ref}`} width={1200} height={900} className={`w-full object-contain ${enlarged ? 'max-h-none' : 'max-h-56'}`} />
+    {order.image && failedImage !== order.image && <button type="button" onClick={() => setEnlarged(!enlarged)} className="block w-full rounded-lg border border-gray-200 p-2 text-left" aria-expanded={enlarged}>
+      <Image unoptimized src={order.image} onError={() => setFailedImage(order.image)} alt={`Referensi custom ${order.order_ref}`} width={1200} height={900} className={`w-full object-contain ${enlarged ? 'max-h-none' : 'max-h-56'}`} />
       <span className="text-sm text-blue-700">{enlarged ? 'Perkecil gambar' : 'Perbesar gambar'}</span>
     </button>}
+    {order.photo_expired && <p className="rounded-lg bg-gray-100 p-3 text-sm text-gray-600">Masa simpan foto berakhir 7 hari setelah pesanan selesai. Catatan dan riwayat pelaksana tetap tersedia.</p>}
+    {!order.photo_expired && order.image && failedImage === order.image && <p className="text-sm text-gray-600">Foto tidak tersedia atau gagal dimuat. <button className="text-blue-700 underline" onClick={() => setFailedImage('')}>Coba lagi</button></p>}
     <p className="whitespace-pre-wrap break-words rounded-lg border border-amber-200 bg-amber-50 p-4 text-base text-gray-900">{order.notes}</p>
     <p className="text-sm text-gray-600">Dibuat oleh {order.created_by} · {time(order.created_at)} · Versi {order.revision}</p>
   </div>;
@@ -70,6 +74,7 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
   const [orders, setOrders] = useState<CustomOrder[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState('');
+  const [fetchError, setFetchError] = useState('');
   const [busy, setBusy] = useState(false);
   const [canManage, setCanManage] = useState(false);
   const [setupRequired, setSetupRequired] = useState(false);
@@ -93,21 +98,27 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
   const [readAcknowledged, setReadAcknowledged] = useState('');
   const [viewActive, setViewActive] = useState(false);
   const alive = useRef(true);
+  const refreshRequest = useRef(0);
+  const invalidateRefresh = useCallback(() => { refreshRequest.current++; }, []);
+  const mutating = useRef(false);
   const refresh = useCallback(() => {
+    const requestId = ++refreshRequest.current;
     return request('/api/custom-orders').then(data => {
-      if (!alive.current) return;
-      setOrders(data.orders); setCanManage(data.can_manage); setLoaded(true); setError('');
+      if (!alive.current || requestId !== refreshRequest.current) return;
+      setOrders(data.orders); setCanManage(data.can_manage); setLoaded(true); setFetchError('');
       setSetupRequired(Boolean(data.setup_required));
       setCompletedTotal(data.completed_total || 0);
-    }).catch(e => { if (alive.current) setError(e instanceof Error ? e.message : String(e)); });
+      return data as { orders: CustomOrder[] };
+    }).catch(e => { if (alive.current && requestId === refreshRequest.current) setFetchError(e instanceof Error ? e.message : String(e)); });
   }, []);
   useEffect(() => {
     alive.current = true;
     void refresh();
-    const interval = window.setInterval(refresh, 30000);
-    window.addEventListener('focus', refresh);
-    return () => { alive.current = false; clearInterval(interval); window.removeEventListener('focus', refresh); };
-  }, [refresh]);
+    const poll = () => { if (!mutating.current && document.visibilityState === 'visible') void refresh(); };
+    const interval = window.setInterval(poll, 30000);
+    window.addEventListener('focus', poll);
+    return () => { alive.current = false; invalidateRefresh(); clearInterval(interval); window.removeEventListener('focus', poll); };
+  }, [refresh, invalidateRefresh]);
   useEffect(() => {
     if (!historyMode || !management) return;
     const requestId = ++historyRequest.current;
@@ -132,12 +143,17 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
   }
   const active = orders.filter(o => o.status !== 'done');
   const pending = active.filter(o => customOrderNeedsPopup(o, deferred.management === management ? deferred.keys : [], management));
-  const gate = busy && form ? undefined : pending[0];
+  // A pending follow-up returns to its detail dialog after the read receipt.
+  // Do not interrupt an open edit/history dialog with background polling.
+  const gate = form || history ? undefined : pending.find(o => o.id === detail?.id) || pending[0];
   const gateKey = gate ? `${gate.id}:${gate.revision}:${customOrderDay()}` : '';
   const readChecked = Boolean(gateKey) && readAcknowledged === gateKey;
-  useEffect(() => { onBlocked(!loaded || Boolean(error) || pending.length > 0); onCount(active.length); }, [loaded, error, pending.length, active.length, onBlocked, onCount]);
+  useEffect(() => { onBlocked(!loaded || Boolean(fetchError) || pending.length > 0); onCount(active.length); }, [loaded, fetchError, pending.length, active.length, onBlocked, onCount]);
 
   async function act(body: Record<string, unknown>) {
+    if (mutating.current) return;
+    mutating.current = true;
+    refreshRequest.current++;
     setBusy(true); setError('');
     try {
       const result = await request('/api/custom-orders', body);
@@ -145,18 +161,39 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
         const revision = body.action === 'create' ? 1 : Number(body.revision) + 1;
         setDeferred(current => ({ management, keys: [...current.keys, `${result.id}:${revision}:${customOrderDay()}`] }));
       }
-      setHistoryVersion(version => version + 1);
-      // Preserve acknowledgement/completion dialogs until the server confirms success.
-      setDetail(null); setHistory(null); setForm(null); setConfirmed(false); setNote('');
-      await refresh();
-    } catch (e) { setError(e instanceof Error ? e.message : String(e)); await refreshAfterConflict(); }
+      if (body.action === 'read') {
+        setOrders(current => current.map(order => order.id === body.id && order.revision === body.revision ? { ...order, needs_read: false } : order));
+        // Keep the selected follow-up and any draft text intact.
+      } else {
+        setHistoryVersion(version => version + 1);
+        setDetail(null); setHistory(null); setForm(null); setConfirmed(false); setNote('');
+      }
+      const latest = await refresh();
+      if (body.action === 'read' && latest) {
+        setDetail(current => current ? latest.orders.find(order => order.id === current.id) || null : null);
+        setConfirmed(false);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      const latest = await refresh();
+      if (latest) {
+        setDetail(current => current ? latest.orders.find(order => order.id === current.id) || null : null);
+        setConfirmed(false);
+      }
+    }
+    finally { mutating.current = false; setBusy(false); }
+  }
+  async function openEdit(order: CustomOrder) {
+    if (busy) return;
+    setBusy(true); setError('');
+    try { const data = await request(`/api/custom-orders?edit=${encodeURIComponent(order.id)}`); setDetail(null); setHistory(null); setForm(data.order); }
+    catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
-  async function refreshAfterConflict() {
-    try {
-      const data = await request('/api/custom-orders');
-      setOrders(data.orders);
-    } catch { /* Keep the original error visible; do not unlock inputs. */ }
+  function openFollowUp(order: CustomOrder) {
+    setError('');
+    setDeferred(current => ({ ...current, keys: current.keys.filter(key => !key.startsWith(`${order.id}:`)) }));
+    setDetail(order); setHistory(null); setForm(null); setConfirmed(false); setNote('');
   }
   async function openHistory(order: CustomOrder) {
     setBusy(true); setError('');
@@ -164,24 +201,26 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
-  const errorBox = error && <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-red-800"><p>{error}</p><button type="button" onClick={refresh} className={`${button} mt-2`}>Muat ulang</button></div>;
+  const errorBox = (error || fetchError) && <div role="alert" className="rounded-lg border border-red-300 bg-red-50 p-3 text-red-800"><p>{error || fetchError}</p><button type="button" disabled={busy} onClick={() => { setError(''); void refresh(); }} className={`${button} mt-2`}>Muat ulang</button></div>;
 
   return <>
     {errorBox}
+    {busy && <p role="status" className="rounded-lg bg-blue-50 p-3 text-blue-800">Memproses, mohon tunggu…</p>}
     {setupRequired && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950">Pesanan Custom belum diaktifkan pada database ini. Owner perlu mengaktifkan penyimpanannya. Pencatatan resi tetap dapat digunakan.</p>}
     {!loaded && !error && <p role="status" className="rounded-lg border bg-white p-4">Memeriksa pengingat pesanan custom…</p>}
     {active.length > 0 && <section className="sticky top-16 z-20 rounded-xl border-2 border-amber-400 bg-amber-50 p-4 sm:p-5 md:top-0" aria-label="Pengingat pesanan custom">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="flex items-center gap-2 text-lg font-bold text-amber-950"><AlertTriangle size={24} />{active.length} pesanan custom belum selesai</h3><p className="mt-1 text-sm text-amber-900">Periksa permintaan sebelum paket dikirim. Sudah dibaca belum berarti sudah disiapkan.</p></div><button type="button" className={`${button} bg-white shrink-0`} onClick={() => setViewActive(!viewActive)}>{viewActive ? 'Ringkas daftar' : 'Lihat permintaan'}</button></div>
-      {viewActive && !management && <div className="mt-4 space-y-3">{active.map(order => <div key={order.id} className="rounded-lg border bg-white p-3"><p className="font-semibold">{order.store_name} · {order.order_ref}</p><p className="mt-1 whitespace-pre-wrap break-words text-sm">{order.notes}</p><button type="button" className={`${button} mt-2`} onClick={() => { setDetail(order); setHistory(null); setConfirmed(false); setNote(''); }}>Buka & tindak lanjuti</button></div>)}</div>}
+      {viewActive && !management && <div className="mt-4 space-y-3">{active.map(order => <div key={order.id} className="rounded-lg border bg-white p-3"><p className="font-semibold">{order.store_name} · {order.order_ref}</p><p className="mt-1 whitespace-pre-wrap break-words text-sm">{order.notes}</p><button type="button" disabled={busy} className={`${button} mt-2`} onClick={() => openFollowUp(order)}>Buka & tindak lanjuti</button></div>)}</div>}
     </section>}
     {management && !setupRequired && <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-lg font-bold">Pesanan Custom</h3>{canManage && <button type="button" className={primary} onClick={() => setForm({ store_id: stores[0]?.id, order_ref: '', notes: '', image: '', ship_date: customOrderDay() })}><Plus className="mr-1 inline" size={18} />Pesanan Custom</button>}</div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-lg font-bold">Pesanan Custom</h3>{canManage && <button type="button" disabled={busy} className={primary} onClick={() => { setError(''); setForm({ store_id: stores[0]?.id, order_ref: '', notes: '', image: '', ship_date: customOrderDay() }); }}><Plus className="mr-1 inline" size={18} />Pesanan Custom</button>}</div>
       <div className="flex flex-wrap gap-2"><button type="button" aria-pressed={!historyMode} className={`${button} ${!historyMode ? 'bg-gray-900 text-white' : ''}`} onClick={() => setHistoryMode(false)}>Aktif ({active.length})</button><button type="button" aria-pressed={historyMode} className={`${button} ${historyMode ? 'bg-gray-900 text-white' : ''}`} onClick={() => { setHistoryMode(true); setHistoryVersion(v => v + 1); }}>Riwayat selesai ({completedTotal})</button></div>
+      {historyMode && <p className="text-sm text-gray-600">Foto disimpan selama 7 hari setelah konfirmasi selesai. Catatan dan riwayat pelaksana tetap tersimpan.</p>}
       {historyMode && <label className="block">Cari riwayat selesai<input type="search" className={`${input} mt-1`} placeholder="Nomor pesanan, pembeli, toko, atau catatan" value={search} onChange={e => { setSearch(e.target.value); setHistoryLoading(true); }} /></label>}
       {historyMode && historyError && <p role="alert" className="text-red-700">{historyError} <button className={button} onClick={() => setHistoryVersion(v => v + 1)}>Coba lagi</button></p>}
       <div className="grid gap-4 md:grid-cols-2">{(historyMode ? completed.orders : active).map(order => <article key={order.id} className="min-w-0 space-y-3 rounded-lg border border-gray-200 p-4">
         <OrderDetail order={order} />
-        <div className="flex flex-wrap gap-2">{order.status !== 'done' && <button type="button" className={primary} onClick={() => { setDeferred({ management, keys: [] }); setDetail(order); setHistory(null); setConfirmed(false); setNote(''); }}>Tindak lanjuti</button>}<button type="button" className={button} disabled={busy} onClick={() => openHistory(order)}>Riwayat aktivitas</button>{canManage && <button type="button" className={button} onClick={() => setForm(order)}>Ubah permintaan</button>}</div>
+        <div className="flex flex-wrap gap-2">{order.status !== 'done' && <button type="button" disabled={busy} className={primary} onClick={() => openFollowUp(order)}>Tindak lanjuti</button>}<button type="button" className={button} disabled={busy} onClick={() => openHistory(order)}>Riwayat aktivitas</button>{canManage && <button type="button" disabled={busy} className={button} onClick={() => openEdit(order)}>Ubah permintaan</button>}</div>
       </article>)}</div>
       {historyMode && <div className="flex flex-wrap items-center gap-3"><p className="text-sm text-gray-600" role="status">{historyLoading ? 'Memuat riwayat…' : `Menampilkan ${completed.orders.length} dari ${completed.total} hasil`}</p>{completed.has_more && <button type="button" disabled={historyLoading} className={button} onClick={loadMore}>Muat lebih banyak</button>}</div>}
       {loaded && !historyLoading && !(historyMode ? completed.orders.length : active.length) && <p className="py-5 text-gray-600">{historyMode ? search ? 'Tidak ada riwayat yang cocok dengan pencarian.' : 'Belum ada pesanan yang dikonfirmasi selesai.' : 'Tidak ada pesanan custom aktif.'}</p>}

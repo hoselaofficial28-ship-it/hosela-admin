@@ -12,6 +12,11 @@ export interface CustomOrder {
   created_at: string;
   updated_at: string;
   needs_read: boolean;
+  photo_expired?: boolean;
+}
+export const CUSTOM_PHOTO_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+export function customPhotoExpired(order: Pick<CustomOrder, 'status' | 'updated_at'>, now = Date.now()) {
+  return order.status === 'done' && Date.parse(order.updated_at) <= now - CUSTOM_PHOTO_RETENTION_MS;
 }
 export interface CustomOrderEvent {
   id: string;

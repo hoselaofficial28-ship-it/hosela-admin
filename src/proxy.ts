@@ -4,7 +4,8 @@ export function proxy(req: NextRequest) {
   const token = req.cookies.get("hosela_session")?.value;
   const { pathname } = req.nextUrl;
 
-  if (pathname === "/login" || pathname === "/register" || pathname.startsWith("/api/auth")) {
+  // This cron endpoint verifies CRON_SECRET itself rather than a browser cookie.
+  if (pathname === "/api/cron/custom-order-photos" || pathname === "/login" || pathname === "/register" || pathname.startsWith("/api/auth")) {
     return NextResponse.next();
   }
 

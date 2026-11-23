@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { getDb } from './db';
 import { hasPostgres, pgQuery, pgTransaction } from './pg';
-import { customOrderDay, validateCustomOrder, type CustomOrder, type CustomOrderEvent } from './custom-order-types';
+import { customOrderDay, customPhotoExpired, CUSTOM_PHOTO_RETENTION_MS, validateCustomOrder, type CustomOrder, type CustomOrderEvent } from './custom-order-types';
 import type { SessionUser } from './auth';
 
 export function isCustomOrderSetupMissing(error: unknown) {
@@ -10,6 +10,13 @@ export function isCustomOrderSetupMissing(error: unknown) {
 }
 
 const table = (name: string) => `${hasPostgres() ? 'hn_' : ''}${name}`;
+const photoUrl = (id: string, revision: number) => `/api/custom-orders/photo?id=${encodeURIComponent(id)}&revision=${revision}`;
+// Never ship base64 photos in polling/list responses.
+const orderColumns = `o.id,o.store_id,o.order_ref,o.ship_date,o.notes,o.revision,o.status,o.created_by,o.created_at,o.updated_at,
+  CASE WHEN o.image != '' THEN '/api/custom-orders/photo?id=' || o.id || '&revision=' || o.revision ELSE '' END AS image`;
+function publicOrder(order: CustomOrder) {
+  return customPhotoExpired(order) ? { ...order, image: '', photo_expired: true } : order;
+}
 const placeholders = (sql: string) => { let n = 0; return sql.replace(/\?/g, () => `$${++n}`); };
 async function rows<T>(sql: string, params: (string | number)[] = []): Promise<T[]> {
   if (hasPostgres()) return (await pgQuery(placeholders(sql), params)).rows as T[];
@@ -35,7 +42,7 @@ async function batch(statements: { sql: string; params: (string | number)[]; che
   }
 }
 export async function listCustomOrders(userId: number, activeOnly = false) {
-  return rows<CustomOrder>(`SELECT o.*, s.short_name AS store_name,
+  const result = await rows<CustomOrder>(`SELECT ${orderColumns}, s.short_name AS store_name,
     CASE WHEN o.status != 'done' AND NOT EXISTS (
       SELECT 1 FROM ${table('custom_order_events')} e WHERE e.order_id=o.id AND e.revision=o.revision
       AND e.action='read' AND e.actor_id=? AND e.day=?
@@ -43,9 +50,18 @@ export async function listCustomOrders(userId: number, activeOnly = false) {
     FROM ${table('custom_orders')} o JOIN ${table('stores')} s ON s.id=o.store_id
     WHERE o.status != 'done' ${activeOnly ? '' : `OR o.id IN (SELECT id FROM ${table('custom_orders')} WHERE status='done' ORDER BY updated_at DESC LIMIT 100)`}
     ORDER BY o.ship_date ASC, o.created_at ASC`, [userId, customOrderDay()]);
+  return result.map(publicOrder);
 }
 export async function customOrderHistory(id: string) {
-  return rows<CustomOrderEvent>(`SELECT * FROM ${table('custom_order_events')} WHERE order_id=? ORDER BY created_at DESC, id DESC`, [id]);
+  const result = await rows<CustomOrderEvent & { has_image: number }>(`SELECT id,order_id,revision,action,actor_id,actor_name,day,created_at,note,
+    CASE WHEN COALESCE(${hasPostgres() ? "snapshot::jsonb->>'image'" : "json_extract(snapshot, '$.image')"},'') != '' THEN 1 ELSE 0 END AS has_image,
+    ${hasPostgres() ? "(snapshot::jsonb - 'image')::text" : "json_remove(snapshot, '$.image')"} AS snapshot
+    FROM ${table('custom_order_events')} WHERE order_id=? ORDER BY created_at DESC, id DESC`, [id]);
+  const current = (await rows<CustomOrder>(`SELECT status,updated_at FROM ${table('custom_orders')} WHERE id=?`, [id]))[0];
+  return result.map(event => ({ ...event, snapshot: JSON.stringify({ ...JSON.parse(event.snapshot),
+    image: event.has_image && current && !customPhotoExpired(current) ? photoUrl(id, event.revision) : '',
+    photo_expired: current ? customPhotoExpired(current) : false,
+  }) }));
 }
 export async function completedCustomOrders(search = '', offset = 0) {
   const query = search.trim().slice(0, 160).toLowerCase();
@@ -54,9 +70,43 @@ export async function completedCustomOrders(search = '', offset = 0) {
     WHERE o.status='done' AND (LOWER(o.order_ref) LIKE ? ESCAPE '!' OR LOWER(o.notes) LIKE ? ESCAPE '!' OR LOWER(s.short_name) LIKE ? ESCAPE '!')`;
   const params = [pattern, pattern, pattern];
   const count = await rows<{ count: string | number }>(`SELECT COUNT(*) AS count ${from}`, params);
-  const orders = await rows<CustomOrder>(`SELECT o.*, s.short_name AS store_name ${from}
+  const orders = await rows<CustomOrder>(`SELECT ${orderColumns}, s.short_name AS store_name ${from}
     ORDER BY o.updated_at DESC, o.id DESC LIMIT 20 OFFSET ?`, [...params, offset]);
-  return { orders, total: Number(count[0].count), has_more: offset + orders.length < Number(count[0].count) };
+  return { orders: orders.map(publicOrder), total: Number(count[0].count), has_more: offset + orders.length < Number(count[0].count) };
+}
+export async function customOrderForEdit(id: string) {
+  const order = (await rows<CustomOrder>(`SELECT o.*, s.short_name AS store_name FROM ${table('custom_orders')} o JOIN ${table('stores')} s ON s.id=o.store_id WHERE o.id=?`, [id]))[0];
+  return order ? publicOrder(order) : null;
+}
+export async function customOrderPhoto(id: string, revision: number) {
+  const order = (await rows<CustomOrder>(`SELECT status,updated_at,revision,image FROM ${table('custom_orders')} WHERE id=?`, [id]))[0];
+  if (!order || customPhotoExpired(order)) return null;
+  if (order.revision === revision) return order.image || null;
+  // Old versions remain available until the completed order reaches its retention date.
+  const field = hasPostgres() ? "snapshot::jsonb->>'image'" : "json_extract(snapshot, '$.image')";
+  const event = (await rows<{ image: string }>(`SELECT ${field} AS image FROM ${table('custom_order_events')}
+    WHERE order_id=? AND revision=? AND action IN ('created','updated') ORDER BY created_at DESC LIMIT 1`, [id, revision]))[0];
+  return event?.image || null;
+}
+
+// Clear both the primary photo and all historical copies in one transaction.
+// Do not update updated_at: it is the completion time for completed orders.
+export async function purgeExpiredCustomPhotos(now = new Date()) {
+  const cutoff = new Date(now.getTime() - CUSTOM_PHOTO_RETENTION_MS).toISOString();
+  await batch([
+    { sql: `UPDATE ${table('custom_orders')} SET image='' WHERE status='done' AND updated_at<=? AND image!=''`, params: [cutoff] },
+    { sql: `UPDATE ${table('custom_order_events')} SET snapshot=${hasPostgres() ? "jsonb_set(snapshot::jsonb, '{image}', '\"\"'::jsonb)::text" : "json_set(snapshot, '$.image', '')"}
+      WHERE order_id IN (SELECT id FROM ${table('custom_orders')} WHERE status='done' AND updated_at<=?)
+      AND COALESCE(${hasPostgres() ? "snapshot::jsonb->>'image'" : "json_extract(snapshot, '$.image')"},'')!=''`, params: [cutoff] },
+  ]);
+}
+let lastPhotoSweep = 0;
+let photoSweep: Promise<void> | null = null;
+export async function maintainCustomPhotos() {
+  if (photoSweep) return photoSweep;
+  if (Date.now() - lastPhotoSweep < 60_000) return;
+  photoSweep = purgeExpiredCustomPhotos().then(() => { lastPhotoSweep = Date.now(); }).finally(() => { photoSweep = null; });
+  return photoSweep;
 }
 export async function completedCustomOrderCount() {
   const result = await rows<{ count: string | number }>(`SELECT COUNT(*) AS count FROM ${table('custom_orders')} WHERE status='done'`);
@@ -78,6 +128,11 @@ export async function mutateCustomOrder(user: SessionUser, body: Record<string, 
     const found = await rows<CustomOrder>(`SELECT o.*, s.short_name AS store_name FROM ${table('custom_orders')} o JOIN ${table('stores')} s ON s.id=o.store_id WHERE o.id=?`, [body.id]);
     if (!found.length) throw new Error('Pesanan tidak ditemukan.');
     order = found[0];
+    if (customPhotoExpired(order)) {
+      // Reopening an expired order must not revive historical copies.
+      await purgeExpiredCustomPhotos();
+      order.image = '';
+    }
     if (order.revision !== body.revision) throw new Error('CONFLICT');
     const oldStatus = order.status;
     if (action === 'update') {
@@ -101,7 +156,8 @@ export async function mutateCustomOrder(user: SessionUser, body: Record<string, 
   const note = typeof body.note === 'string' ? body.note.trim() : '';
   if (note.length > 2000 || (action === 'issue' && !note)) throw new Error('Isi alasan kendala, maksimal 2.000 karakter.');
   const eventAction = action === 'create' ? 'created' : action === 'update' ? 'updated' : action === 'complete' ? 'completed' : String(action);
-  statements.push({ sql: `INSERT INTO ${table('custom_order_events')} (id,order_id,revision,action,actor_id,actor_name,day,created_at,note,snapshot) VALUES (?,?,?,?,?,?,?,?,?,?)`, params: [randomUUID(), order.id, order.revision, eventAction, user.id, user.name, customOrderDay(), now, note, JSON.stringify(order)] });
+  const snapshot = { ...order, image: action === 'create' || action === 'update' ? order.image : order.image ? photoUrl(order.id, order.revision) : '' };
+  statements.push({ sql: `INSERT INTO ${table('custom_order_events')} (id,order_id,revision,action,actor_id,actor_name,day,created_at,note,snapshot) VALUES (?,?,?,?,?,?,?,?,?,?)`, params: [randomUUID(), order.id, order.revision, eventAction, user.id, user.name, customOrderDay(), now, note, JSON.stringify(snapshot)] });
   await batch(statements);
   return order.id;
 }

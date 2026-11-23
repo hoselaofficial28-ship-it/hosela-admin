@@ -177,5 +177,62 @@ try {
     assert.equal(summary.completed_total, 105);
     assert.equal(summary.orders.every(o => o.status !== 'done'), true);
   });
+  await check('Foto dimuat terpisah, edit tetap mendapat foto asli, riwayat baca tidak menggandakan base64', async () => {
+    const photo = 'data:image/jpeg;base64,' + 'A'.repeat(400000);
+    const photoId = await repo.mutateCustomOrder(owner, { ...payload, image: photo, action: 'create' });
+    await repo.mutateCustomOrder(admin, { id: photoId, revision: 1, action: 'read' });
+    const order = (await repo.listCustomOrders(admin.id, true)).find(o => o.id === photoId);
+    assert.match(order.image, /^\/api\/custom-orders\/photo/);
+    assert.ok(JSON.stringify(order).length < 2000);
+    const events = await repo.customOrderHistory(photoId);
+    assert.ok(JSON.stringify(events).length < 5000);
+    assert.equal(await repo.customOrderPhoto(photoId, 1), photo);
+    assert.equal((await repo.customOrderForEdit(photoId)).image, photo);
+    const read = db.prepare("SELECT snapshot FROM custom_order_events WHERE order_id=? AND action='read'").get(photoId);
+    assert.ok(read.snapshot.length < 2000);
+    await repo.mutateCustomOrder(owner, { ...payload, id: photoId, revision: 1, image: photo, action: 'update' });
+    assert.equal(await repo.customOrderPhoto(photoId, 1), photo);
+    console.log('Payload pesanan foto 400 KB menjadi ' + JSON.stringify(order).length + ' byte pada daftar.');
+  });
+  await check('Foto kedaluwarsa tepat 7 hari, salinan riwayat ikut dihapus, teks dan pelaksana tetap ada', async () => {
+    const now = new Date();
+    const photo = 'data:image/jpeg;base64,AAAA';
+    const insert = db.prepare(`INSERT INTO custom_orders (id,store_id,order_ref,ship_date,notes,image,revision,status,created_by,created_at,updated_at) VALUES (?,1,?,'2026-11-23','Catatan dipertahankan',?,1,?,'Owner',?,?)`);
+    for (const [key, age, status] of [['expired', 8, 'done'], ['boundary', 7, 'done'], ['recent', 6, 'done'], ['active-old', 8, 'open']]) {
+      const stamp = new Date(now.getTime() - age * 86400000).toISOString();
+      insert.run(key, key, photo, status, stamp, stamp);
+      db.prepare('INSERT INTO custom_order_events (id,order_id,revision,action,actor_id,actor_name,day,created_at,note,snapshot) VALUES (?,?,1,?,2,?, ?,?,?,?)')
+        .run('event-'+key, key, status === 'done' ? 'completed' : 'created', 'Admin Uji', '2026-11-23', stamp, 'Sesuai', JSON.stringify({image:photo,notes:'Catatan dipertahankan',revision:1}));
+    }
+    assert.equal(types.customPhotoExpired({ status:'done',updated_at:new Date(now.getTime()-7*86400000+1).toISOString() }, now.getTime()), false);
+    assert.equal(await repo.customOrderPhoto('expired', 1), null);
+    assert.equal((await repo.customOrderForEdit('expired')).image, '');
+    assert.equal(JSON.parse((await repo.customOrderHistory('expired'))[0].snapshot).image, '');
+    await repo.purgeExpiredCustomPhotos(now);
+    await repo.purgeExpiredCustomPhotos(now); // Idempotent, does not alter completion time.
+    for (const key of ['expired','boundary']) {
+      const order = db.prepare('SELECT * FROM custom_orders WHERE id=?').get(key);
+      assert.equal(order.image, ''); assert.equal(order.notes, 'Catatan dipertahankan'); assert.equal(order.status, 'done');
+      const event = db.prepare('SELECT * FROM custom_order_events WHERE order_id=?').get(key);
+      assert.equal(JSON.parse(event.snapshot).image, ''); assert.equal(event.actor_name, 'Admin Uji'); assert.equal(event.note, 'Sesuai');
+    }
+    for (const key of ['recent','active-old']) assert.equal(db.prepare('SELECT image FROM custom_orders WHERE id=?').get(key).image, photo);
+  });
+  await check('Endpoint foto dan pembersihan terjadwal memerlukan izin', async () => {
+    const photoApi = load('src/app/api/custom-orders/photo/route.ts', { '@/lib/auth': auth, '@/lib/custom-orders': repo });
+    session = null;
+    assert.equal((await photoApi.GET(new NextRequest('http://test/api/custom-orders/photo?id=recent&revision=1'))).status, 401);
+    session = { ...admin, permissions: ['input'] };
+    assert.equal((await photoApi.GET(new NextRequest('http://test/api/custom-orders/photo?id=recent&revision=1'))).status, 200);
+    assert.equal((await photoApi.GET(new NextRequest('http://test/api/custom-orders/photo?id=expired&revision=1'))).status, 404);
+    const cron = load('src/app/api/cron/custom-order-photos/route.ts', { '@/lib/custom-orders': repo });
+    const oldSecret = process.env.CRON_SECRET;
+    try {
+      delete process.env.CRON_SECRET;
+      assert.equal((await cron.GET(new NextRequest('http://test/api/cron/custom-order-photos'))).status, 401);
+      process.env.CRON_SECRET = 'fixture-only';
+      assert.equal((await cron.GET(new NextRequest('http://test/api/cron/custom-order-photos', { headers: { authorization: 'Bearer fixture-only' } }))).status, 200);
+    } finally { if(oldSecret === undefined) delete process.env.CRON_SECRET; else process.env.CRON_SECRET = oldSecret; }
+  });
   console.log(`${checks} pengujian lolos; database operasional tidak dibuka.`);
 } finally { db.close(); }

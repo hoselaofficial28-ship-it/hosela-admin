@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { canAccessFeature, getSession } from '@/lib/auth';
-import { completedCustomOrders, completedCustomOrderCount, customOrderHistory, isCustomOrderSetupMissing, listCustomOrders, mutateCustomOrder } from '@/lib/custom-orders';
+import { completedCustomOrders, completedCustomOrderCount, customOrderForEdit, customOrderHistory, isCustomOrderSetupMissing, listCustomOrders, maintainCustomPhotos, mutateCustomOrder } from '@/lib/custom-orders';
 
 function failure(error: unknown) {
   const message = error instanceof Error ? error.message : 'Kesalahan penyimpanan pesanan custom.';
@@ -14,6 +14,13 @@ export async function GET(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Silakan login kembali.' }, { status: 401 });
   if (!canAccessFeature(user, 'input')) return NextResponse.json({ error: 'Tidak memiliki akses Input Resi.' }, { status: 403 });
   try {
+    await maintainCustomPhotos();
+    const editId = req.nextUrl.searchParams.get('edit');
+    if (editId) {
+      if (user.role !== 'owner') return NextResponse.json({ error: 'Hanya owner yang dapat mengubah permintaan.' }, { status: 403 });
+      const order = await customOrderForEdit(editId);
+      return NextResponse.json(order ? { order } : { error: 'Pesanan tidak ditemukan.' }, { status: order ? 200 : 404, headers: { 'Cache-Control': 'no-store' } });
+    }
     const id = req.nextUrl.searchParams.get('history');
     if (id) return NextResponse.json({ events: await customOrderHistory(id) });
     if (req.nextUrl.searchParams.get('completed') === 'true') {
@@ -40,6 +47,7 @@ export async function POST(req: NextRequest) {
     const body = JSON.parse(raw);
     if (!body || Array.isArray(body) || typeof body !== 'object') return NextResponse.json({ error: 'Data tidak valid.' }, { status: 400 });
     if (['create', 'update'].includes(body.action) && user.role !== 'owner') return NextResponse.json({ error: 'Hanya owner yang dapat membuat atau mengubah permintaan custom.' }, { status: 403 });
+    await maintainCustomPhotos();
     return NextResponse.json({ id: await mutateCustomOrder(user, body) });
   } catch (error) { return failure(error); }
 }
