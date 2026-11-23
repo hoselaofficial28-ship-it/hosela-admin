@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { canAccessFeature, getSession } from '@/lib/auth';
-import { customOrderHistory, isCustomOrderSetupMissing, listCustomOrders, mutateCustomOrder } from '@/lib/custom-orders';
+import { completedCustomOrders, completedCustomOrderCount, customOrderHistory, isCustomOrderSetupMissing, listCustomOrders, mutateCustomOrder } from '@/lib/custom-orders';
 
 function failure(error: unknown) {
   const message = error instanceof Error ? error.message : 'Kesalahan penyimpanan pesanan custom.';
@@ -16,7 +16,12 @@ export async function GET(req: NextRequest) {
   try {
     const id = req.nextUrl.searchParams.get('history');
     if (id) return NextResponse.json({ events: await customOrderHistory(id) });
-    return NextResponse.json({ orders: await listCustomOrders(user.id), can_manage: user.role === 'owner' }, { headers: { 'Cache-Control': 'no-store' } });
+    if (req.nextUrl.searchParams.get('completed') === 'true') {
+      const offset = Number(req.nextUrl.searchParams.get('offset') || 0);
+      if (!Number.isSafeInteger(offset) || offset < 0) return NextResponse.json({ error: 'Halaman riwayat tidak valid.' }, { status: 400 });
+      return NextResponse.json(await completedCustomOrders(req.nextUrl.searchParams.get('q') || '', offset), { headers: { 'Cache-Control': 'no-store' } });
+    }
+    return NextResponse.json({ orders: await listCustomOrders(user.id, true), completed_total: await completedCustomOrderCount(), can_manage: user.role === 'owner' }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     if (!req.nextUrl.searchParams.has('history') && isCustomOrderSetupMissing(error)) {
       return NextResponse.json({ orders: [], can_manage: false, setup_required: true }, { headers: { 'Cache-Control': 'no-store' } });

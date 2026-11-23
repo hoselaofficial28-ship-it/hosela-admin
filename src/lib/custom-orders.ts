@@ -34,18 +34,33 @@ async function batch(statements: { sql: string; params: (string | number)[]; che
     })();
   }
 }
-export async function listCustomOrders(userId: number) {
+export async function listCustomOrders(userId: number, activeOnly = false) {
   return rows<CustomOrder>(`SELECT o.*, s.short_name AS store_name,
     CASE WHEN o.status != 'done' AND NOT EXISTS (
       SELECT 1 FROM ${table('custom_order_events')} e WHERE e.order_id=o.id AND e.revision=o.revision
       AND e.action='read' AND e.actor_id=? AND e.day=?
     ) THEN 1 ELSE 0 END AS needs_read
     FROM ${table('custom_orders')} o JOIN ${table('stores')} s ON s.id=o.store_id
-    WHERE o.status != 'done' OR o.id IN (SELECT id FROM ${table('custom_orders')} WHERE status='done' ORDER BY updated_at DESC LIMIT 100)
+    WHERE o.status != 'done' ${activeOnly ? '' : `OR o.id IN (SELECT id FROM ${table('custom_orders')} WHERE status='done' ORDER BY updated_at DESC LIMIT 100)`}
     ORDER BY o.ship_date ASC, o.created_at ASC`, [userId, customOrderDay()]);
 }
 export async function customOrderHistory(id: string) {
   return rows<CustomOrderEvent>(`SELECT * FROM ${table('custom_order_events')} WHERE order_id=? ORDER BY created_at DESC, id DESC`, [id]);
+}
+export async function completedCustomOrders(search = '', offset = 0) {
+  const query = search.trim().slice(0, 160).toLowerCase();
+  const pattern = `%${query.replace(/[!%_]/g, char => `!${char}`)}%`;
+  const from = `FROM ${table('custom_orders')} o JOIN ${table('stores')} s ON s.id=o.store_id
+    WHERE o.status='done' AND (LOWER(o.order_ref) LIKE ? ESCAPE '!' OR LOWER(o.notes) LIKE ? ESCAPE '!' OR LOWER(s.short_name) LIKE ? ESCAPE '!')`;
+  const params = [pattern, pattern, pattern];
+  const count = await rows<{ count: string | number }>(`SELECT COUNT(*) AS count ${from}`, params);
+  const orders = await rows<CustomOrder>(`SELECT o.*, s.short_name AS store_name ${from}
+    ORDER BY o.updated_at DESC, o.id DESC LIMIT 20 OFFSET ?`, [...params, offset]);
+  return { orders, total: Number(count[0].count), has_more: offset + orders.length < Number(count[0].count) };
+}
+export async function completedCustomOrderCount() {
+  const result = await rows<{ count: string | number }>(`SELECT COUNT(*) AS count FROM ${table('custom_orders')} WHERE status='done'`);
+  return Number(result[0].count);
 }
 export async function mutateCustomOrder(user: SessionUser, body: Record<string, unknown>) {
   const action = body.action;

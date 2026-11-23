@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
   if (!canAccessFeature(session, "input")) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
-    const customOrders = await listCustomOrders(session.id);
+    const customOrders = await listCustomOrders(session.id, true);
     if (customOrders.some(order => Boolean(order.needs_read))) {
       return NextResponse.json({ error: "Ada permintaan custom yang belum Anda baca. Buka pengingat pesanan custom sebelum menyimpan resi." }, { status: 409 });
     }

@@ -139,5 +139,43 @@ try {
       }
     }
   });
+  await check('Owner ditunda setelah menyimpan, masuk kembali / admin lain / versi baru tetap wajib membaca', () => {
+    const order = { id: 'own', revision: 1, status: 'open', needs_read: true };
+    const keys = ['own:1:2026-11-23'];
+    assert.equal(types.customOrderNeedsPopup(order, keys, true, '2026-11-23'), false);
+    assert.equal(types.customOrderNeedsPopup(order, keys, false, '2026-11-23'), true);
+    assert.equal(types.customOrderNeedsPopup(order, [], true, '2026-11-23'), true);
+    assert.equal(types.customOrderNeedsPopup({ ...order, revision: 2 }, keys, true, '2026-11-23'), true);
+    assert.equal(types.customOrderNeedsPopup(order, keys, true, '2026-11-24'), true);
+    assert.equal(types.customOrderNeedsPopup({ ...order, needs_read: false }, [], true, '2026-11-23'), false);
+  });
+  await check('Jumlah riwayat sebenarnya, halaman berikutnya, pencarian melampaui 100 terbaru', async () => {
+    const insert = db.prepare(`INSERT INTO custom_orders (id,store_id,order_ref,ship_date,notes,image,revision,status,created_by,created_at,updated_at) VALUES (?,1,?,'2026-11-23',?,'',1,'done','Fixture',?,?)`);
+    db.transaction(() => {
+      for (let n = 0; n < 105; n++) {
+        const stamp = new Date(Date.UTC(2026, 0, 1, 0, n)).toISOString();
+        insert.run(`fixture-${n}`, `ORDER-${n}`, n === 0 ? 'Unik_lama%!' : 'Contoh', stamp, stamp);
+      }
+    })();
+    assert.equal(await repo.completedCustomOrderCount(), 105);
+    const first = await repo.completedCustomOrders();
+    assert.equal(first.orders.length, 20); assert.equal(first.total, 105); assert.equal(first.has_more, true);
+    assert.equal(first.orders[0].order_ref, 'ORDER-104');
+    const second = await repo.completedCustomOrders('', 20);
+    assert.equal(second.orders.length, 20);
+    assert.equal(second.orders.some(o => first.orders.some(p => p.id === o.id)), false);
+    const last = await repo.completedCustomOrders('', 100);
+    assert.equal(last.orders.length, 5); assert.equal(last.has_more, false);
+    const search = await repo.completedCustomOrders('unik_lama%!');
+    assert.equal(search.total, 1); assert.equal(search.orders[0].order_ref, 'ORDER-0');
+    assert.equal((await repo.completedCustomOrders('Toko Uji')).total, 105);
+    assert.equal((await repo.completedCustomOrders('tidak ditemukan')).total, 0);
+    const response = await api.GET(new NextRequest('http://test/api/custom-orders?completed=true&offset=100'));
+    assert.equal((await response.json()).orders.length, 5);
+    assert.equal((await api.GET(new NextRequest('http://test/api/custom-orders?completed=true&offset=-1'))).status, 400);
+    const summary = await (await api.GET(new NextRequest('http://test/api/custom-orders'))).json();
+    assert.equal(summary.completed_total, 105);
+    assert.equal(summary.orders.every(o => o.status !== 'done'), true);
+  });
   console.log(`${checks} pengujian lolos; database operasional tidak dibuka.`);
 } finally { db.close(); }

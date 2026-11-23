@@ -17,7 +17,18 @@ Ada kendala wajib disertai alasan dan tidak menutup pengingat. Riwayat menyimpan
 nama pelaksana, waktu, catatan serta salinan gambar/permintaan saat aktivitas.
 Perubahan oleh owner menaikkan versi, membuka ulang pesanan, dan mempertahankan
 semua riwayat. Tidak tersedia penghapusan catatan agar bukti tetap tersimpan.
-Tab selesai menampilkan 100 pesanan terakhir; riwayat lain tetap tersimpan di DB.
+Tab selesai menampilkan jumlah seluruh pesanan selesai. Riwayat dimuat 20
+pesanan per halaman, diurutkan berdasarkan waktu penyelesaian terbaru; tombol
+Muat lebih banyak membuka halaman berikutnya. Pencarian nomor pesanan, pembeli,
+toko, atau catatan mencakup seluruh riwayat, termasuk yang lebih lama dari 100
+pesanan terakhir.
+
+Setelah owner membuat atau mengubah permintaan, popup untuk versi tersebut
+ditunda selama owner masih berada di tab Pesanan Custom pada kunjungan itu.
+Pindah tab, keluar dan masuk menu, memuat ulang halaman, atau berganti hari
+mengaktifkan kewajiban membaca kembali. Penundaan tidak mencatat pengakuan
+membaca dan tidak berlaku untuk admin lain. Tombol Tindak lanjuti juga membuka
+pengingat membaca jika owner ingin langsung menyelesaikan pesanan tersebut.
 
 ## Aktivasi setelah persetujuan owner
 
@@ -58,10 +69,10 @@ dilakukan saat aktivasi.
 | `src/lib/custom-order-types.ts` | Validasi data, tipe data dan hari operasional WIB. |
 | `migrations/20261121-custom-orders.sql` | Dua tabel dan dua indeks baru, tanpa mengubah tabel lama. |
 | `scripts/migrate-custom-orders.mjs` | Aktivasi eksplisit menggunakan `--apply`. |
-| `scripts/test-custom-orders.mjs` | 17 pengujian logika dan API menggunakan SQLite di memori. |
+| `scripts/test-custom-orders.mjs` | 19 pengujian logika dan API menggunakan SQLite di memori, termasuk riwayat lebih dari 100 pesanan dan penundaan popup owner. |
 | `scripts/test-db-initialization.mjs` | Dua pengujian pembukaan database lama dan pemulihan setelah gagal inisialisasi. |
 
-Pemeriksaan implementasi: 17 pengujian custom dan dua pengujian database lolos, lint semua berkas fitur lolos,
+Pemeriksaan implementasi: 19 pengujian custom dan dua pengujian database lolos, lint semua berkas fitur lolos,
 build Next.js lolos. Lint global masih melaporkan 18 error di berkas lama:
 empat script migrasi/pemulihan CommonJS, Dashboard, Lab Riset dan Rapat.
 Bagian tersebut belum diubah dalam pekerjaan ini. Pengujian browser PC/HP

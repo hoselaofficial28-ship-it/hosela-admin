@@ -26,6 +26,11 @@ export interface CustomOrderEvent {
 export function customOrderDay(now = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Jakarta', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
 }
+// Deferrals live only in the current menu visit; they never record a read receipt.
+export function customOrderNeedsPopup(order: CustomOrder, deferredKeys: string[], management: boolean, day = customOrderDay()) {
+  return order.status !== 'done' && Boolean(order.needs_read)
+    && !(management && deferredKeys.includes(`${order.id}:${order.revision}:${day}`));
+}
 export function validateCustomOrder(body: Record<string, unknown>) {
   const store_id = Number(body.store_id);
   const order_ref = typeof body.order_ref === 'string' ? body.order_ref.trim() : '';

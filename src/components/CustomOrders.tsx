@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { AlertTriangle, CheckCheck, ImagePlus, Plus, X } from 'lucide-react';
 import Image from 'next/image';
-import { customOrderDay, type CustomOrder, type CustomOrderEvent } from '@/lib/custom-order-types';
+import { customOrderDay, customOrderNeedsPopup, type CustomOrder, type CustomOrderEvent } from '@/lib/custom-order-types';
 
 type Store = { id: number; short_name: string };
 const button = 'min-h-11 rounded-lg px-4 py-2 font-medium border border-gray-300 disabled:opacity-50 disabled:cursor-wait';
@@ -76,6 +76,16 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
   const [detail, setDetail] = useState<CustomOrder | null>(null);
   const [history, setHistory] = useState<CustomOrderEvent[] | null>(null);
   const [historyMode, setHistoryMode] = useState(false);
+  const [completedTotal, setCompletedTotal] = useState(0);
+  const [search, setSearch] = useState('');
+  const [historyVersion, setHistoryVersion] = useState(0);
+  const [completed, setCompleted] = useState<{ orders: CustomOrder[]; total: number; has_more: boolean }>({ orders: [], total: 0, has_more: false });
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
+  const historyRequest = useRef(0);
+  const invalidateHistory = useCallback(() => { historyRequest.current++; }, []);
+  const [deferred, setDeferred] = useState<{ management: boolean; keys: string[] }>({ management, keys: [] });
+  if (deferred.management !== management) setDeferred({ management, keys: [] });
   const [form, setForm] = useState<Partial<CustomOrder> | null>(null);
   const [photoBusy, setPhotoBusy] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
@@ -88,6 +98,7 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
       if (!alive.current) return;
       setOrders(data.orders); setCanManage(data.can_manage); setLoaded(true); setError('');
       setSetupRequired(Boolean(data.setup_required));
+      setCompletedTotal(data.completed_total || 0);
     }).catch(e => { if (alive.current) setError(e instanceof Error ? e.message : String(e)); });
   }, []);
   useEffect(() => {
@@ -97,9 +108,31 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
     window.addEventListener('focus', refresh);
     return () => { alive.current = false; clearInterval(interval); window.removeEventListener('focus', refresh); };
   }, [refresh]);
+  useEffect(() => {
+    if (!historyMode || !management) return;
+    const requestId = ++historyRequest.current;
+    const timer = window.setTimeout(() => {
+      setHistoryLoading(true); setHistoryError('');
+      request(`/api/custom-orders?completed=true&q=${encodeURIComponent(search)}`).then(data => {
+        if (requestId === historyRequest.current) setCompleted({ orders: data.orders, total: data.total || 0, has_more: Boolean(data.has_more) });
+      }).catch(e => {
+        if (requestId === historyRequest.current) setHistoryError(e instanceof Error ? e.message : String(e));
+      }).finally(() => { if (requestId === historyRequest.current) setHistoryLoading(false); });
+    }, 250);
+    return () => { clearTimeout(timer); invalidateHistory(); };
+  }, [historyMode, management, search, historyVersion, invalidateHistory]);
+  async function loadMore() {
+    const requestId = ++historyRequest.current;
+    setHistoryLoading(true); setHistoryError('');
+    try {
+      const data = await request(`/api/custom-orders?completed=true&q=${encodeURIComponent(search)}&offset=${completed.orders.length}`);
+      if (requestId === historyRequest.current) setCompleted(previous => ({ orders: [...previous.orders, ...data.orders.filter((o: CustomOrder) => !previous.orders.some(p => p.id === o.id))], total: data.total, has_more: data.has_more }));
+    } catch (e) { if (requestId === historyRequest.current) setHistoryError(e instanceof Error ? e.message : String(e)); }
+    finally { if (requestId === historyRequest.current) setHistoryLoading(false); }
+  }
   const active = orders.filter(o => o.status !== 'done');
-  const pending = active.filter(o => Boolean(o.needs_read));
-  const gate = pending[0];
+  const pending = active.filter(o => customOrderNeedsPopup(o, deferred.management === management ? deferred.keys : [], management));
+  const gate = busy && form ? undefined : pending[0];
   const gateKey = gate ? `${gate.id}:${gate.revision}:${customOrderDay()}` : '';
   const readChecked = Boolean(gateKey) && readAcknowledged === gateKey;
   useEffect(() => { onBlocked(!loaded || Boolean(error) || pending.length > 0); onCount(active.length); }, [loaded, error, pending.length, active.length, onBlocked, onCount]);
@@ -107,7 +140,12 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
   async function act(body: Record<string, unknown>) {
     setBusy(true); setError('');
     try {
-      await request('/api/custom-orders', body);
+      const result = await request('/api/custom-orders', body);
+      if (body.action === 'create' || body.action === 'update') {
+        const revision = body.action === 'create' ? 1 : Number(body.revision) + 1;
+        setDeferred(current => ({ management, keys: [...current.keys, `${result.id}:${revision}:${customOrderDay()}`] }));
+      }
+      setHistoryVersion(version => version + 1);
       // Preserve acknowledgement/completion dialogs until the server confirms success.
       setDetail(null); setHistory(null); setForm(null); setConfirmed(false); setNote('');
       await refresh();
@@ -138,12 +176,15 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
     </section>}
     {management && !setupRequired && <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-lg font-bold">Pesanan Custom</h3>{canManage && <button type="button" className={primary} onClick={() => setForm({ store_id: stores[0]?.id, order_ref: '', notes: '', image: '', ship_date: customOrderDay() })}><Plus className="mr-1 inline" size={18} />Pesanan Custom</button>}</div>
-      <div className="flex flex-wrap gap-2"><button type="button" aria-pressed={!historyMode} className={`${button} ${!historyMode ? 'bg-gray-900 text-white' : ''}`} onClick={() => setHistoryMode(false)}>Aktif ({active.length})</button><button type="button" aria-pressed={historyMode} className={`${button} ${historyMode ? 'bg-gray-900 text-white' : ''}`} onClick={() => setHistoryMode(true)}>Riwayat selesai (100 terbaru)</button></div>
-      <div className="grid gap-4 md:grid-cols-2">{orders.filter(o => historyMode ? o.status === 'done' : o.status !== 'done').map(order => <article key={order.id} className="min-w-0 space-y-3 rounded-lg border border-gray-200 p-4">
+      <div className="flex flex-wrap gap-2"><button type="button" aria-pressed={!historyMode} className={`${button} ${!historyMode ? 'bg-gray-900 text-white' : ''}`} onClick={() => setHistoryMode(false)}>Aktif ({active.length})</button><button type="button" aria-pressed={historyMode} className={`${button} ${historyMode ? 'bg-gray-900 text-white' : ''}`} onClick={() => { setHistoryMode(true); setHistoryVersion(v => v + 1); }}>Riwayat selesai ({completedTotal})</button></div>
+      {historyMode && <label className="block">Cari riwayat selesai<input type="search" className={`${input} mt-1`} placeholder="Nomor pesanan, pembeli, toko, atau catatan" value={search} onChange={e => { setSearch(e.target.value); setHistoryLoading(true); }} /></label>}
+      {historyMode && historyError && <p role="alert" className="text-red-700">{historyError} <button className={button} onClick={() => setHistoryVersion(v => v + 1)}>Coba lagi</button></p>}
+      <div className="grid gap-4 md:grid-cols-2">{(historyMode ? completed.orders : active).map(order => <article key={order.id} className="min-w-0 space-y-3 rounded-lg border border-gray-200 p-4">
         <OrderDetail order={order} />
-        <div className="flex flex-wrap gap-2">{order.status !== 'done' && <button type="button" className={primary} onClick={() => { setDetail(order); setHistory(null); setConfirmed(false); setNote(''); }}>Tindak lanjuti</button>}<button type="button" className={button} disabled={busy} onClick={() => openHistory(order)}>Riwayat aktivitas</button>{canManage && <button type="button" className={button} onClick={() => setForm(order)}>Ubah permintaan</button>}</div>
+        <div className="flex flex-wrap gap-2">{order.status !== 'done' && <button type="button" className={primary} onClick={() => { setDeferred({ management, keys: [] }); setDetail(order); setHistory(null); setConfirmed(false); setNote(''); }}>Tindak lanjuti</button>}<button type="button" className={button} disabled={busy} onClick={() => openHistory(order)}>Riwayat aktivitas</button>{canManage && <button type="button" className={button} onClick={() => setForm(order)}>Ubah permintaan</button>}</div>
       </article>)}</div>
-      {loaded && !orders.some(o => historyMode ? o.status === 'done' : o.status !== 'done') && <p className="py-5 text-gray-600">{historyMode ? 'Belum ada pesanan yang dikonfirmasi selesai.' : 'Tidak ada pesanan custom aktif.'}</p>}
+      {historyMode && <div className="flex flex-wrap items-center gap-3"><p className="text-sm text-gray-600" role="status">{historyLoading ? 'Memuat riwayat…' : `Menampilkan ${completed.orders.length} dari ${completed.total} hasil`}</p>{completed.has_more && <button type="button" disabled={historyLoading} className={button} onClick={loadMore}>Muat lebih banyak</button>}</div>}
+      {loaded && !historyLoading && !(historyMode ? completed.orders.length : active.length) && <p className="py-5 text-gray-600">{historyMode ? search ? 'Tidak ada riwayat yang cocok dengan pencarian.' : 'Belum ada pesanan yang dikonfirmasi selesai.' : 'Tidak ada pesanan custom aktif.'}</p>}
     </section>}
     {gate && <Modal key={gateKey} title={`Wajib dibaca · ${pending.length} permintaan custom`}>
       <p className="mb-4 text-gray-700">Periksa permintaan berikut sebelum mengisi resi. Konfirmasi membaca akan mencatat nama dan waktu Anda.</p>
