@@ -16,7 +16,9 @@ Konfirmasi sudah disiapkan membutuhkan centang dan pengakuan membaca hari ini.
 Ada kendala wajib disertai alasan dan tidak menutup pengingat. Riwayat menyimpan
 nama pelaksana, waktu, catatan serta salinan gambar/permintaan saat aktivitas.
 Perubahan oleh owner menaikkan versi, membuka ulang pesanan, dan mempertahankan
-semua riwayat. Tidak tersedia penghapusan catatan agar bukti tetap tersimpan.
+semua riwayat. Penghapusan hanya tersedia untuk owner dan hanya untuk pesanan
+yang sudah selesai: satu riwayat dihapus permanen bersama foto dan seluruh
+aktivitasnya setelah konfirmasi. Pesanan aktif tidak dapat dihapus.
 Foto pesanan selesai tersedia selama 7 × 24 jam dari waktu konfirmasi selesai.
 Setelah batas itu, foto tidak dilayani lagi oleh API dan dihapus dari tabel
 pesanan serta seluruh salinan gambar pada riwayat aktivitas. Catatan, nama
@@ -28,6 +30,12 @@ pesanan per halaman, diurutkan berdasarkan waktu penyelesaian terbaru; tombol
 Muat lebih banyak membuka halaman berikutnya. Pencarian nomor pesanan, pembeli,
 toko, atau catatan mencakup seluruh riwayat, termasuk yang lebih lama dari 100
 pesanan terakhir.
+
+Riwayat selesai ditampilkan sebagai daftar satu baris per pesanan: foto kecil,
+nomor pesanan, toko dan tanggal selesai, serta potongan catatan. Mengetuk baris
+atau foto membuka detail selesai; ikon riwayat aktivitas dan ikon tempat sampah
+(owner) berada di ujung kanan baris. Ikon tempat sampah membuka konfirmasi
+sebelum data dihapus permanen.
 
 Setelah owner membuat atau mengubah permintaan, popup untuk versi tersebut
 ditunda selama owner masih berada di tab Pesanan Custom pada kunjungan itu.
@@ -91,18 +99,18 @@ dilakukan saat aktivasi.
 | Berkas | Perubahan |
 | --- | --- |
 | `src/app/(dashboard)/input/page.tsx` | Tab custom, jumlah aktif, penguncian kolom angka, pesan penolakan penyimpanan. |
-| `src/components/CustomOrders.tsx` | Tembok membaca, pengingat saat scroll, formulir gambar/catatan, konfirmasi dan riwayat. |
-| `src/app/api/custom-orders/route.ts` | Akses login, izin membuat/mengubah untuk owner, aksi admin dan pembacaan riwayat. |
+| `src/components/CustomOrders.tsx` | Tembok membaca, pengingat saat scroll, formulir gambar/catatan, konfirmasi, riwayat berbentuk daftar, dan hapus manual. |
+| `src/app/api/custom-orders/route.ts` | Akses login, izin membuat/mengubah/menghapus untuk owner, aksi admin dan pembacaan riwayat. |
 | `src/app/api/shipments/route.ts` | Tolak penyimpanan resi saat ada permintaan belum dibaca. |
-| `src/lib/custom-orders.ts` | Penyimpanan SQLite/PostgreSQL, transaksi dan arsip salinan permintaan. |
+| `src/lib/custom-orders.ts` | Penyimpanan SQLite/PostgreSQL, transaksi, arsip salinan permintaan, dan penghapusan riwayat selesai. |
 | `src/lib/custom-order-types.ts` | Validasi data, tipe data dan hari operasional WIB. |
 | `migrations/20261121-custom-orders.sql` | Dua tabel dan dua indeks baru, tanpa mengubah tabel lama. |
 | `scripts/migrate-custom-orders.mjs` | Aktivasi eksplisit menggunakan `--apply`. |
-| `scripts/test-custom-orders.mjs` | 22 pengujian logika dan API menggunakan SQLite di memori, termasuk retensi foto, otorisasi, dan ukuran payload. |
-| `scripts/test-custom-orders-ui.mjs` | Simulasi handler komponen: simpan owner, tindak lanjut setelah membaca, respons jaringan lama, klik ganda, dan selesai. Tidak membuka browser atau database operasional. |
+| `scripts/test-custom-orders.mjs` | 23 pengujian logika dan API menggunakan SQLite di memori, termasuk retensi foto, penghapusan riwayat, otorisasi, dan ukuran payload. |
+| `scripts/test-custom-orders-ui.mjs` | Simulasi handler komponen: simpan owner, tindak lanjut setelah membaca, respons jaringan lama, klik ganda, selesai, daftar riwayat, dan konfirmasi hapus. Tidak membuka browser atau database operasional. |
 | `scripts/test-db-initialization.mjs` | Dua pengujian pembukaan database lama dan pemulihan setelah gagal inisialisasi. |
 
-Pemeriksaan implementasi: 22 pengujian custom, empat skenario handler UI, dan dua pengujian database lolos, lint semua berkas fitur lolos,
+Pemeriksaan implementasi: 23 pengujian custom, lima skenario handler UI, dan dua pengujian database lolos, lint semua berkas fitur lolos,
 build Next.js lolos. Lint global masih melaporkan 18 error di berkas lama:
 empat script migrasi/pemulihan CommonJS, Dashboard, Lab Riset dan Rapat.
 Bagian tersebut belum diubah dalam pekerjaan ini. Pengujian browser PC/HP

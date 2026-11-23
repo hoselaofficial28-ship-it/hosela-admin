@@ -32,7 +32,7 @@ function load(file, imports) {
   return compiled.exports;
 }
 const types=load('src/lib/custom-order-types.ts',{});
-const Component=load('src/components/CustomOrders.tsx',{'react':hooks,'next/image':()=>null,'lucide-react':{AlertTriangle:()=>null,CheckCheck:()=>null,ImagePlus:()=>null,Plus:()=>null,X:()=>null},'@/lib/custom-order-types':types}).default;
+const Component=load('src/components/CustomOrders.tsx',{'react':hooks,'next/image':()=>null,'lucide-react':{AlertTriangle:()=>null,CheckCheck:()=>null,History:()=>null,ImageOff:()=>null,ImagePlus:()=>null,Plus:()=>null,Trash2:()=>null,X:()=>null},'@/lib/custom-order-types':types}).default;
 const originalFetch=globalThis.fetch;
 const originalDocument=globalThis.document;
 const originalWindow=globalThis.window;
@@ -57,9 +57,11 @@ globalThis.fetch=async (url,options={})=>{
     if(body.action==='create') data=[{id:'own',store_id:1,store_name:'Uji',order_ref:'FIXTURE',notes:'Merah',image:'',revision:1,status:'open',needs_read:true,created_by:'Owner',created_at:stamp,updated_at:stamp}];
     if(body.action==='read') data=data.map(o=>({...o,needs_read:false}));
     if(body.action==='complete')data=data.map(o=>({...o,status:'done'}));
+    if(body.action==='delete')data=data.filter(o=>o.id!==body.id);
     return Response.json({id:'own'});
   }
   if(holdNext){holdNext=false; const snapshot=structuredClone(data); return new Promise(resolve=>{staleResolve=()=>resolve(Response.json({orders:snapshot,can_manage:true,completed_total:0}));});}
+  if(url.includes('completed=true')){const done=data.filter(o=>o.status==='done');return Response.json({orders:structuredClone(done),total:done.length,has_more:false});}
   return Response.json({orders:structuredClone(data.filter(o=>o.status!=='done')),can_manage:true,completed_total:data.filter(o=>o.status==='done').length});
 };
 function render(){cursor=0;dirty=false;tree=Component(props);const tasks=effects;effects=[];tasks.forEach(f=>f());}
@@ -105,6 +107,23 @@ try{
   assert.equal(modal('Tindak lanjut pesanan custom'),undefined);
   assert.ok(button('Riwayat selesai (1)'));
   console.log('PASS UI: konfirmasi selesai menutup detail dan memperbarui jumlah riwayat.');
+  button('Riwayat selesai (1)').props.onClick();await settle();
+  await new Promise(resolve=>setTimeout(resolve,300));await settle();
+  const list=()=>nodes().find(n=>n.type==='ul'&&n.props?.['aria-label']==='Riwayat pesanan selesai');
+  assert.ok(list(),'Riwayat harus tampil sebagai daftar');
+  assert.equal(nodes().filter(n=>n.type==='li').length,1);
+  const remove=nodes().find(n=>n.type==='button'&&n.props?.['aria-label']==='Hapus riwayat FIXTURE');
+  assert.ok(remove,'Owner harus mendapat tombol hapus riwayat');
+  remove.props.onClick();await settle();
+  assert.ok(modal('Hapus riwayat pesanan'));
+  assert.equal(data.length,1);
+  assert.equal(data[0].status,'done');
+  button('Hapus permanen').props.onClick();await settle();
+  await new Promise(resolve=>setTimeout(resolve,300));await settle();
+  assert.equal(data.length,0,'Riwayat terhapus dari sumber data');
+  assert.equal(nodes().filter(n=>n.type==='li').length,0,'Daftar langsung kosong setelah hapus');
+  assert.ok(nodes().some(n=>n.props?.role==='status'&&content(n).includes('dihapus permanen')));
+  console.log('PASS UI: riwayat selesai berbentuk daftar dan tombol hapus meminta konfirmasi lebih dulu.');
 }finally{
   slots.forEach(slot=>slot?.cleanup?.());
   globalThis.fetch=originalFetch;globalThis.document=originalDocument;globalThis.window=originalWindow;

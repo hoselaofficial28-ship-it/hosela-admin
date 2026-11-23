@@ -112,6 +112,19 @@ export async function completedCustomOrderCount() {
   const result = await rows<{ count: string | number }>(`SELECT COUNT(*) AS count FROM ${table('custom_orders')} WHERE status='done'`);
   return Number(result[0].count);
 }
+// Owner-only manual purge of one finished record: the order row, its photo and
+// every activity snapshot go together. Active orders are never deletable.
+export async function deleteCompletedCustomOrder(id: unknown) {
+  if (typeof id !== 'string' || !id || id.length > 64) throw new Error('Pesanan tidak valid.');
+  const found = await rows<{ status: string }>(`SELECT status FROM ${table('custom_orders')} WHERE id=?`, [id]);
+  if (!found.length) throw new Error('Pesanan tidak ditemukan.');
+  if (found[0].status !== 'done') throw new Error('Hanya riwayat pesanan selesai yang dapat dihapus.');
+  await batch([
+    { sql: `DELETE FROM ${table('custom_order_events')} WHERE order_id=?`, params: [id] },
+    { sql: `DELETE FROM ${table('custom_orders')} WHERE id=? AND status='done'`, params: [id], check: true },
+  ]);
+  return id;
+}
 export async function mutateCustomOrder(user: SessionUser, body: Record<string, unknown>) {
   const action = body.action;
   const now = new Date().toISOString();

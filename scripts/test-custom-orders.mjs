@@ -234,5 +234,26 @@ try {
       assert.equal((await cron.GET(new NextRequest('http://test/api/cron/custom-order-photos', { headers: { authorization: 'Bearer fixture-only' } }))).status, 200);
     } finally { if(oldSecret === undefined) delete process.env.CRON_SECRET; else process.env.CRON_SECRET = oldSecret; }
   });
+  await check('Riwayat selesai bisa dihapus manual oleh owner; pesanan aktif dan admin tetap ditolak', async () => {
+    const doneId = await repo.mutateCustomOrder(owner, { ...payload, order_ref: 'HAPUS-1', action: 'create' });
+    await repo.mutateCustomOrder(admin, { id: doneId, revision: 1, action: 'read' });
+    await repo.mutateCustomOrder(admin, { id: doneId, revision: 1, action: 'complete', confirmed: true, note: 'Selesai' });
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM custom_order_events WHERE order_id=?').get(doneId).n, 3);
+    session = { ...admin, permissions: ['input'] };
+    const forbidden = new NextRequest('http://test/api/custom-orders', { method: 'POST', body: JSON.stringify({ action: 'delete', id: doneId }) });
+    assert.equal((await api.POST(forbidden)).status, 403);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM custom_orders WHERE id=?').get(doneId).n, 1);
+    session = owner;
+    const activeId = await repo.mutateCustomOrder(owner, { ...payload, order_ref: 'AKTIF-HAPUS', action: 'create' });
+    await assert.rejects(repo.deleteCompletedCustomOrder(activeId), /selesai/);
+    await assert.rejects(repo.deleteCompletedCustomOrder('tidak-ada'), /tidak ditemukan/);
+    const rejected = new NextRequest('http://test/api/custom-orders', { method: 'POST', body: JSON.stringify({ action: 'delete', id: activeId }) });
+    assert.equal((await api.POST(rejected)).status, 400);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM custom_orders WHERE id=?').get(activeId).n, 1);
+    const accepted = new NextRequest('http://test/api/custom-orders', { method: 'POST', body: JSON.stringify({ action: 'delete', id: doneId }) });
+    assert.equal((await api.POST(accepted)).status, 200);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM custom_orders WHERE id=?').get(doneId).n, 0);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM custom_order_events WHERE order_id=?').get(doneId).n, 0);
+  });
   console.log(`${checks} pengujian lolos; database operasional tidak dibuka.`);
 } finally { db.close(); }

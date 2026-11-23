@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
-import { AlertTriangle, CheckCheck, ImagePlus, Plus, X } from 'lucide-react';
+import { AlertTriangle, CheckCheck, History, ImageOff, ImagePlus, Plus, Trash2, X } from 'lucide-react';
 import Image from 'next/image';
 import { customOrderDay, customOrderNeedsPopup, type CustomOrder, type CustomOrderEvent } from '@/lib/custom-order-types';
 
@@ -10,6 +10,7 @@ const button = 'min-h-11 rounded-lg px-4 py-2 font-medium border border-gray-300
 const primary = `${button} bg-blue-600 text-white border-blue-600 hover:bg-blue-700`;
 const input = 'w-full min-h-11 rounded-lg border border-gray-300 p-3 text-base';
 const time = (value: string) => new Date(value).toLocaleString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'medium', timeStyle: 'short' });
+const day = (value: string) => new Date(value).toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta', dateStyle: 'medium' });
 
 async function request(url: string, body?: Record<string, unknown>) {
   const signal = AbortSignal.timeout(20000);
@@ -74,11 +75,14 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
   const [orders, setOrders] = useState<CustomOrder[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [fetchError, setFetchError] = useState('');
   const [busy, setBusy] = useState(false);
   const [canManage, setCanManage] = useState(false);
   const [setupRequired, setSetupRequired] = useState(false);
   const [detail, setDetail] = useState<CustomOrder | null>(null);
+  const [viewing, setViewing] = useState<CustomOrder | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CustomOrder | null>(null);
   const [history, setHistory] = useState<CustomOrderEvent[] | null>(null);
   const [historyMode, setHistoryMode] = useState(false);
   const [completedTotal, setCompletedTotal] = useState(0);
@@ -145,7 +149,7 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
   const pending = active.filter(o => customOrderNeedsPopup(o, deferred.management === management ? deferred.keys : [], management));
   // A pending follow-up returns to its detail dialog after the read receipt.
   // Do not interrupt an open edit/history dialog with background polling.
-  const gate = form || history ? undefined : pending.find(o => o.id === detail?.id) || pending[0];
+  const gate = form || history || viewing || deleteTarget ? undefined : pending.find(o => o.id === detail?.id) || pending[0];
   const gateKey = gate ? `${gate.id}:${gate.revision}:${customOrderDay()}` : '';
   const readChecked = Boolean(gateKey) && readAcknowledged === gateKey;
   useEffect(() => { onBlocked(!loaded || Boolean(fetchError) || pending.length > 0); onCount(active.length); }, [loaded, fetchError, pending.length, active.length, onBlocked, onCount]);
@@ -166,7 +170,8 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
         // Keep the selected follow-up and any draft text intact.
       } else {
         setHistoryVersion(version => version + 1);
-        setDetail(null); setHistory(null); setForm(null); setConfirmed(false); setNote('');
+        setDetail(null); setHistory(null); setForm(null); setViewing(null); setDeleteTarget(null); setConfirmed(false); setNote('');
+        if (body.action === 'delete') setNotice('Riwayat pesanan dihapus permanen.');
       }
       const latest = await refresh();
       if (body.action === 'read' && latest) {
@@ -186,7 +191,7 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
   async function openEdit(order: CustomOrder) {
     if (busy) return;
     setBusy(true); setError('');
-    try { const data = await request(`/api/custom-orders?edit=${encodeURIComponent(order.id)}`); setDetail(null); setHistory(null); setForm(data.order); }
+    try { const data = await request(`/api/custom-orders?edit=${encodeURIComponent(order.id)}`); setDetail(null); setHistory(null); setViewing(null); setForm(data.order); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
@@ -197,7 +202,7 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
   }
   async function openHistory(order: CustomOrder) {
     setBusy(true); setError('');
-    try { const data = await request(`/api/custom-orders?history=${encodeURIComponent(order.id)}`); setDetail(order); setHistory(data.events); }
+    try { const data = await request(`/api/custom-orders?history=${encodeURIComponent(order.id)}`); setDetail(order); setViewing(null); setHistory(data.events); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
@@ -214,14 +219,28 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
     </section>}
     {management && !setupRequired && <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-lg font-bold">Pesanan Custom</h3>{canManage && <button type="button" disabled={busy} className={primary} onClick={() => { setError(''); setForm({ store_id: stores[0]?.id, order_ref: '', notes: '', image: '', ship_date: customOrderDay() }); }}><Plus className="mr-1 inline" size={18} />Pesanan Custom</button>}</div>
-      <div className="flex flex-wrap gap-2"><button type="button" aria-pressed={!historyMode} className={`${button} ${!historyMode ? 'bg-gray-900 text-white' : ''}`} onClick={() => setHistoryMode(false)}>Aktif ({active.length})</button><button type="button" aria-pressed={historyMode} className={`${button} ${historyMode ? 'bg-gray-900 text-white' : ''}`} onClick={() => { setHistoryMode(true); setHistoryVersion(v => v + 1); }}>Riwayat selesai ({completedTotal})</button></div>
+      <div className="flex flex-wrap gap-2"><button type="button" aria-pressed={!historyMode} className={`${button} ${!historyMode ? 'bg-gray-900 text-white' : ''}`} onClick={() => { setHistoryMode(false); setNotice(''); }}>Aktif ({active.length})</button><button type="button" aria-pressed={historyMode} className={`${button} ${historyMode ? 'bg-gray-900 text-white' : ''}`} onClick={() => { setHistoryMode(true); setHistoryVersion(v => v + 1); setNotice(''); }}>Riwayat selesai ({completedTotal})</button></div>
       {historyMode && <p className="text-sm text-gray-600">Foto disimpan selama 7 hari setelah konfirmasi selesai. Catatan dan riwayat pelaksana tetap tersimpan.</p>}
-      {historyMode && <label className="block">Cari riwayat selesai<input type="search" className={`${input} mt-1`} placeholder="Nomor pesanan, pembeli, toko, atau catatan" value={search} onChange={e => { setSearch(e.target.value); setHistoryLoading(true); }} /></label>}
+      {historyMode && <label className="block">Cari riwayat selesai<input type="search" className={`${input} mt-1`} placeholder="Nomor pesanan, pembeli, toko, atau catatan" value={search} onChange={e => { setSearch(e.target.value); setHistoryLoading(true); setNotice(''); }} /></label>}
+      {historyMode && notice && <p role="status" className="rounded-lg border border-green-300 bg-green-50 p-3 text-green-900">{notice}</p>}
       {historyMode && historyError && <p role="alert" className="text-red-700">{historyError} <button className={button} onClick={() => setHistoryVersion(v => v + 1)}>Coba lagi</button></p>}
-      <div className="grid gap-4 md:grid-cols-2">{(historyMode ? completed.orders : active).map(order => <article key={order.id} className="min-w-0 space-y-3 rounded-lg border border-gray-200 p-4">
+      {historyMode ? <ul aria-label="Riwayat pesanan selesai" className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">{completed.orders.map(order => <li key={order.id} className="flex items-center gap-3 px-2 py-2 sm:px-3">
+        <button type="button" onClick={() => setViewing(order)} aria-label={`Buka detail ${order.order_ref}`} className="shrink-0 rounded-lg">
+          {order.image ? <Image unoptimized src={order.image} alt="" width={96} height={96} className="size-14 rounded-lg border border-gray-200 object-cover" /> : <span className="flex size-14 items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 text-gray-400"><ImageOff size={20} /></span>}
+        </button>
+        <button type="button" onClick={() => setViewing(order)} className="min-w-0 flex-1 text-left">
+          <span className="block truncate font-semibold text-gray-900">{order.order_ref}</span>
+          <span className="block truncate text-sm text-gray-600">{order.store_name} · selesai {day(order.updated_at)}</span>
+          <span className="block truncate text-sm text-gray-500">{order.notes}</span>
+        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          <button type="button" disabled={busy} className={`${button} px-3`} aria-label={`Riwayat aktivitas ${order.order_ref}`} onClick={() => openHistory(order)}><History size={18} /></button>
+          {canManage && <button type="button" disabled={busy} className={`${button} border-red-200 px-3 text-red-700 hover:bg-red-50`} aria-label={`Hapus riwayat ${order.order_ref}`} onClick={() => { setError(''); setNotice(''); setDeleteTarget(order); }}><Trash2 size={18} /></button>}
+        </div>
+      </li>)}</ul> : <div className="grid gap-4 md:grid-cols-2">{active.map(order => <article key={order.id} className="min-w-0 space-y-3 rounded-lg border border-gray-200 p-4">
         <OrderDetail order={order} />
         <div className="flex flex-wrap gap-2">{order.status !== 'done' && <button type="button" disabled={busy} className={primary} onClick={() => openFollowUp(order)}>Tindak lanjuti</button>}<button type="button" className={button} disabled={busy} onClick={() => openHistory(order)}>Riwayat aktivitas</button>{canManage && <button type="button" disabled={busy} className={button} onClick={() => openEdit(order)}>Ubah permintaan</button>}</div>
-      </article>)}</div>
+      </article>)}</div>}
       {historyMode && <div className="flex flex-wrap items-center gap-3"><p className="text-sm text-gray-600" role="status">{historyLoading ? 'Memuat riwayat…' : `Menampilkan ${completed.orders.length} dari ${completed.total} hasil`}</p>{completed.has_more && <button type="button" disabled={historyLoading} className={button} onClick={loadMore}>Muat lebih banyak</button>}</div>}
       {loaded && !historyLoading && !(historyMode ? completed.orders.length : active.length) && <p className="py-5 text-gray-600">{historyMode ? search ? 'Tidak ada riwayat yang cocok dengan pencarian.' : 'Belum ada pesanan yang dikonfirmasi selesai.' : 'Tidak ada pesanan custom aktif.'}</p>}
     </section>}
@@ -243,6 +262,23 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
         {errorBox}<button type="button" disabled={busy || !confirmed} className={`${primary} w-full`} onClick={() => act({ action: 'complete', id: detail.id, revision: detail.revision, confirmed, note })}><CheckCheck size={18} className="mr-2 inline" />Konfirmasi sudah disiapkan</button>
         <button type="button" disabled={busy || !note.trim()} className={`${button} w-full`} onClick={() => act({ action: 'issue', id: detail.id, revision: detail.revision, note })}>Ada kendala — pengingat tetap aktif</button>
       </div>}
+    </Modal>}
+    {!gate && !deleteTarget && viewing && <Modal title="Detail pesanan selesai" onClose={() => { if (!busy) setViewing(null); }}>
+      <OrderDetail order={viewing} />
+      <p className="mt-3 rounded-lg bg-gray-50 p-3 text-sm text-gray-600">Pesanan ini sudah dikonfirmasi selesai. Catatan dan foto tetap tersimpan sampai batas 7 hari atau sampai riwayat dihapus manual.</p>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" disabled={busy} className={button} onClick={() => openHistory(viewing)}>Riwayat aktivitas</button>
+        {canManage && <button type="button" disabled={busy} className={button} onClick={() => openEdit(viewing)}>Ubah permintaan</button>}
+        {canManage && <button type="button" disabled={busy} className={`${button} border-red-200 text-red-700 hover:bg-red-50`} onClick={() => { setNotice(''); setError(''); setDeleteTarget(viewing); }}><Trash2 size={18} className="mr-1 inline" />Hapus riwayat</button>}
+      </div>
+    </Modal>}
+    {!gate && deleteTarget && <Modal title="Hapus riwayat pesanan" onClose={() => { if (!busy) setDeleteTarget(null); }}>
+      <p className="text-gray-700">Riwayat <strong className="break-words">{deleteTarget.order_ref}</strong> beserta foto dan seluruh riwayat aktivitasnya akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.</p>
+      {errorBox}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" disabled={busy} className={button} onClick={() => setDeleteTarget(null)}>Batal</button>
+        <button type="button" disabled={busy} className={`${button} border-red-600 bg-red-600 text-white hover:bg-red-700`} onClick={() => void act({ action: 'delete', id: deleteTarget.id })}>{busy ? 'Menghapus…' : 'Hapus permanen'}</button>
+      </div>
     </Modal>}
     {!gate && form && <Modal title={form.id ? 'Ubah permintaan custom' : 'Tambah pesanan custom'} onClose={() => { if (!busy && !photoBusy) setForm(null); }}>
       <form className="space-y-4" onSubmit={e => { e.preventDefault(); void act({ ...form, action: form.id ? 'update' : 'create' }); }}>
