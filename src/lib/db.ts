@@ -24,10 +24,16 @@ let _db: Database.Database | null = null;
 
 export function getDb(): Database.Database {
   if (!_db) {
-    _db = new Database(DB_PATH);
-    _db.pragma("journal_mode = WAL");
-    _db.pragma("foreign_keys = ON");
-    initializeDatabase(_db);
+    const connection = new Database(DB_PATH);
+    try {
+      connection.pragma("journal_mode = WAL");
+      connection.pragma("foreign_keys = ON");
+      initializeDatabase(connection);
+      _db = connection;
+    } catch (error) {
+      connection.close();
+      throw error;
+    }
   }
   return _db;
 }
@@ -264,7 +270,6 @@ function initializeDatabase(db: Database.Database) {
 
     CREATE INDEX IF NOT EXISTS idx_time_audit_user_date ON time_audit(user_id, date);
     CREATE INDEX IF NOT EXISTS idx_perfect_week_user ON perfect_week(user_id);
-    CREATE INDEX IF NOT EXISTS idx_perfect_week_user_week ON perfect_week(user_id, week_start);
     CREATE INDEX IF NOT EXISTS idx_weekly_review_user ON weekly_review(user_id, week_start);
 
     CREATE INDEX IF NOT EXISTS idx_shipments_date ON daily_shipments(date);
@@ -284,6 +289,7 @@ function initializeDatabase(db: Database.Database) {
   migrateDatabase(db);
 
   db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_perfect_week_user_week ON perfect_week(user_id, week_start);
     CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
   `);
 

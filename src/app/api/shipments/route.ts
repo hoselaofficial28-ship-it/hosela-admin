@@ -3,6 +3,7 @@ import { getDb } from "@/lib/db";
 import { canAccessFeature, getSession } from "@/lib/auth";
 import { seedHistoricalData } from "@/lib/seed-history";
 import { hasPostgres, pgQuery, pgTransaction } from "@/lib/pg";
+import { isCustomOrderSetupMissing, listCustomOrders } from "@/lib/custom-orders";
 
 export async function DELETE(req: NextRequest) {
   const session = await getSession();
@@ -131,6 +132,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
   }
   if (!canAccessFeature(session, "input")) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+
+  try {
+    const customOrders = await listCustomOrders(session.id);
+    if (customOrders.some(order => Boolean(order.needs_read))) {
+      return NextResponse.json({ error: "Ada permintaan custom yang belum Anda baca. Buka pengingat pesanan custom sebelum menyimpan resi." }, { status: 409 });
+    }
+  } catch (error) {
+    if (!isCustomOrderSetupMissing(error)) {
+      return NextResponse.json({ error: "Gagal memeriksa pengingat custom. Coba muat ulang sebelum menyimpan resi." }, { status: 503 });
+    }
+  }
 
   const { date, shipments } = await req.json() as {
     date: string;

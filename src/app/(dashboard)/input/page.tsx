@@ -6,6 +6,7 @@ import {
   Plus, Save, Sun, Sunset, Trash2, Zap,
 } from "lucide-react";
 import Toast from "@/components/Toast";
+import CustomOrders from "@/components/CustomOrders";
 import { formatDateShort } from "@/lib/utils";
 
 interface Store {
@@ -44,12 +45,13 @@ interface ExpressShipment {
   store_color: string;
 }
 
-type TabKey = "daily" | "peak" | "express";
+type TabKey = "daily" | "peak" | "express" | "custom";
 
 const tabs: { key: TabKey; label: string; icon: React.ReactNode }[] = [
   { key: "daily", label: "Resi Harian", icon: <PackageCheck className="w-4 h-4" /> },
   { key: "peak", label: "Jam Ramai", icon: <Flame className="w-4 h-4" /> },
   { key: "express", label: "Pengiriman Kilat", icon: <Zap className="w-4 h-4" /> },
+  { key: "custom", label: "Pesanan Custom", icon: <PackageCheck className="w-4 h-4" /> },
 ];
 
 function localDateStr(d: Date) {
@@ -81,6 +83,8 @@ function hourLabel(hour: number) {
 export default function InputPage() {
   const today = todayKey();
   const [activeTab, setActiveTab] = useState<TabKey>("daily");
+  const [customBlocked, setCustomBlocked] = useState(true);
+  const [customCount, setCustomCount] = useState(0);
   const [date, setDate] = useState(today);
   const [stores, setStores] = useState<Store[]>([]);
   const [quantities, setQuantities] = useState<Record<number, SessionQuantity>>({});
@@ -255,7 +259,9 @@ export default function InputPage() {
         setToast({ message: isExisting ? "Data berhasil diperbarui!" : "Data berhasil disimpan!", type: "success" });
         setIsExisting(true);
       } else {
-        setToast({ message: "Gagal menyimpan data", type: "error" });
+        const failure = await res.json();
+        setToast({ message: failure.error || "Gagal menyimpan data", type: "error" });
+        if (res.status === 409) window.dispatchEvent(new Event("focus"));
       }
     } catch {
       setToast({ message: "Terjadi kesalahan", type: "error" });
@@ -342,7 +348,9 @@ export default function InputPage() {
         <p className="text-sm text-gray-500">Catat resi harian, jam ramai pesanan, dan pengiriman kilat</p>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-1.5 flex gap-1 overflow-x-auto">
+      <CustomOrders stores={stores} management={activeTab === "custom"} onBlocked={setCustomBlocked} onCount={setCustomCount} />
+
+      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-1.5 grid grid-cols-2 sm:flex gap-1">
         {tabs.map((tab) => (
           <button
             key={tab.key}
@@ -353,10 +361,12 @@ export default function InputPage() {
           >
             {tab.icon}
             {tab.label}
+            {tab.key === "custom" && customCount > 0 && <span className="rounded-full bg-amber-200 px-2 text-amber-950">{customCount}</span>}
           </button>
         ))}
       </div>
 
+      <fieldset disabled={customBlocked} inert={customBlocked} className="min-w-0 space-y-4 disabled:opacity-60">
       {activeTab === "daily" && (
         <DailyShipmentPanel
           date={date}
@@ -404,6 +414,7 @@ export default function InputPage() {
         />
       )}
 
+      </fieldset>
       {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
     </div>
   );

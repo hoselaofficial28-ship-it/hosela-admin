@@ -40,6 +40,7 @@ yarn-error.log*
 hosela.db
 hosela.db-shm
 hosela.db-wal
+/backups/
 
 # logs
 .next-dev.log

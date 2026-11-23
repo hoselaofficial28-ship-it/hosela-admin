@@ -3,4 +3,6 @@ hosela.db-shm
 hosela.db-wal
 .next
 node_modules
+backups/
+.env*
 *.tsbuildinfo
