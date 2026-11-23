@@ -84,6 +84,7 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
   const [viewing, setViewing] = useState<CustomOrder | null>(null);
   const [deleteTargets, setDeleteTargets] = useState<CustomOrder[]>([]);
   const [selected, setSelected] = useState<string[]>([]);
+  const [gateDismissed, setGateDismissed] = useState('');
   const [history, setHistory] = useState<CustomOrderEvent[] | null>(null);
   const [historyMode, setHistoryMode] = useState(false);
   const [completedTotal, setCompletedTotal] = useState(0);
@@ -152,6 +153,8 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
   // Do not interrupt an open edit/history dialog with background polling.
   const gate = form || history || viewing || deleteTargets.length > 0 ? undefined : pending.find(o => o.id === detail?.id) || pending[0];
   const gateKey = gate ? `${gate.id}:${gate.revision}:${customOrderDay()}` : '';
+  // Closing the reminder only hides it: the read wall and the resi lock stay active.
+  const gateOpen = Boolean(gate) && gateDismissed !== gateKey;
   const readChecked = Boolean(gateKey) && readAcknowledged === gateKey;
   useEffect(() => { onBlocked(!loaded || Boolean(fetchError) || pending.length > 0); onCount(active.length); }, [loaded, fetchError, pending.length, active.length, onBlocked, onCount]);
 
@@ -192,19 +195,24 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
     }
     finally { mutating.current = false; setBusy(false); }
   }
+  // While a read receipt is still due, any action reopens the reminder instead of
+  // opening a dialog behind it.
+  const blockUntilRead = () => { if (!gate) return false; setGateDismissed(''); return true; };
   async function openEdit(order: CustomOrder) {
-    if (busy) return;
+    if (busy || blockUntilRead()) return;
     setBusy(true); setError('');
     try { const data = await request(`/api/custom-orders?edit=${encodeURIComponent(order.id)}`); setDetail(null); setHistory(null); setViewing(null); setForm(data.order); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   }
   function openFollowUp(order: CustomOrder) {
+    if (blockUntilRead()) return;
     setError('');
     setDeferred(current => ({ ...current, keys: current.keys.filter(key => !key.startsWith(`${order.id}:`)) }));
     setDetail(order); setHistory(null); setForm(null); setConfirmed(false); setNote('');
   }
   async function openHistory(order: CustomOrder) {
+    if (blockUntilRead()) return;
     setBusy(true); setError('');
     try { const data = await request(`/api/custom-orders?history=${encodeURIComponent(order.id)}`); setDetail(order); setViewing(null); setHistory(data.events); }
     catch (e) { setError(e instanceof Error ? e.message : String(e)); }
@@ -217,6 +225,7 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
     {busy && <p role="status" className="rounded-lg bg-blue-50 p-3 text-blue-800">Memproses, mohon tunggu…</p>}
     {setupRequired && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950">Pesanan Custom belum diaktifkan pada database ini. Owner perlu mengaktifkan penyimpanannya. Pencatatan resi tetap dapat digunakan.</p>}
     {!loaded && !error && <p role="status" className="rounded-lg border bg-white p-4">Memeriksa pengingat pesanan custom…</p>}
+    {gate && !gateOpen && <p role="status" className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-950">Pengingat membaca ditutup. Input resi tetap terkunci sampai konfirmasi membaca dicatat. <button type="button" className={`${button} mt-2 block`} onClick={() => setGateDismissed('')}>Buka pengingat</button></p>}
     {active.length > 0 && <section className="sticky top-16 z-20 rounded-xl border-2 border-amber-400 bg-amber-50 p-4 sm:p-5 md:top-0" aria-label="Pengingat pesanan custom">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="flex items-center gap-2 text-lg font-bold text-amber-950"><AlertTriangle size={24} />{active.length} pesanan custom belum selesai</h3><p className="mt-1 text-sm text-amber-900">Periksa permintaan sebelum paket dikirim. Sudah dibaca belum berarti sudah disiapkan.</p></div><button type="button" className={`${button} bg-white shrink-0`} onClick={() => setViewActive(!viewActive)}>{viewActive ? 'Ringkas daftar' : 'Lihat permintaan'}</button></div>
       {viewActive && !management && <div className="mt-4 space-y-3">{active.map(order => <div key={order.id} className="rounded-lg border bg-white p-3"><p className="font-semibold">{order.store_name} · {order.order_ref}</p><p className="mt-1 whitespace-pre-wrap break-words text-sm">{order.notes}</p><button type="button" disabled={busy} className={`${button} mt-2`} onClick={() => openFollowUp(order)}>Buka & tindak lanjuti</button></div>)}</div>}
@@ -253,7 +262,7 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
       {historyMode && <div className="flex flex-wrap items-center gap-3"><p className="text-sm text-gray-600" role="status">{historyLoading ? 'Memuat riwayat…' : `Menampilkan ${completed.orders.length} dari ${completed.total} hasil`}</p>{completed.has_more && <button type="button" disabled={historyLoading} className={button} onClick={loadMore}>Muat lebih banyak</button>}</div>}
       {loaded && !historyLoading && !(historyMode ? completed.orders.length : active.length) && <p className="py-5 text-gray-600">{historyMode ? search ? 'Tidak ada riwayat yang cocok dengan pencarian.' : 'Belum ada pesanan yang dikonfirmasi selesai.' : 'Tidak ada pesanan custom aktif.'}</p>}
     </section>}
-    {gate && <Modal key={gateKey} title={`Wajib dibaca · ${pending.length} permintaan custom`}>
+    {gateOpen && gate && <Modal key={gateKey} title={`Wajib dibaca · ${pending.length} permintaan custom`} onClose={() => setGateDismissed(gateKey)}>
       <p className="mb-4 text-gray-700">Periksa permintaan berikut sebelum mengisi resi. Konfirmasi membaca akan mencatat nama dan waktu Anda.</p>
       <OrderDetail order={gate} />
       <label className="my-4 flex min-h-11 cursor-pointer items-start gap-3 rounded-lg border p-3"><input type="checkbox" checked={readChecked} onChange={e => setReadAcknowledged(e.target.checked ? gateKey : '')} className="mt-1 size-5 shrink-0" /><span>Saya sudah membaca gambar dan catatan permintaan ini.</span></label>

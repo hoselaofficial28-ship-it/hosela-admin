@@ -40,10 +40,11 @@ let focus;
 let staleResolve;
 let holdNext=false;
 let conflictNext=false;
+let blocked=false;
 let data=[];
 let posts=0;
 const stamp=new Date().toISOString();
-const props={stores:[{id:1,short_name:'Uji'}],management:true,onBlocked:()=>{},onCount:()=>{}};
+const props={stores:[{id:1,short_name:'Uji'}],management:true,onBlocked:v=>{blocked=v;},onCount:()=>{}};
 globalThis.document={visibilityState:'visible'};
 globalThis.window={setInterval:()=>1,clearInterval:()=>{},setTimeout,clearTimeout,addEventListener:(key,fn)=>{if(key==='focus')focus=fn;},removeEventListener:()=>{}};
 globalThis.fetch=async (url,options={})=>{
@@ -79,6 +80,14 @@ try{
   console.log('PASS UI: simpan owner tidak langsung membuka popup.');
   button('Tindak lanjuti').props.onClick();await settle();
   assert.ok(modal('Wajib dibaca · 1 permintaan custom'));
+  const gateModal=nodes().find(n=>typeof n.type==='function'&&n.props.title?.startsWith('Wajib dibaca'));
+  gateModal.props.onClose();await settle();
+  assert.equal(nodes().some(n=>n.props?.title?.startsWith('Wajib dibaca')),false);
+  assert.ok(nodes().some(n=>n.props?.role==='status'&&content(n).includes('Input resi tetap terkunci')),'Pemberitahuan kunci resi tampil');
+  assert.equal(blocked,true,'Input resi tetap terkunci setelah popup ditutup');
+  button('Buka pengingat').props.onClick();await settle();
+  assert.ok(modal('Wajib dibaca · 1 permintaan custom'),'Pengingat bisa dibuka lagi');
+  console.log('PASS UI: popup wajib dibaca bisa ditutup (X/ESC) tanpa membuka kunci input resi.');
   nodes().find(n=>n.type==='input'&&n.props.type==='checkbox').props.onChange({target:{checked:true}});await settle();
   // A polling response starts before mutation but arrives after it.
   holdNext=true;focus();await settle();

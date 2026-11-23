@@ -12,6 +12,12 @@ dan saat jendela aktif kembali; API penyimpanan resi juga memeriksa permintaan
 belum dibaca. Setelah membaca, pencatatan semua toko dapat dilanjutkan tanpa
 menunggu pengerjaan custom selesai.
 
+Popup pengingat dapat ditutup sementara lewat ikon X atau tombol Escape tanpa
+mengubah aturan: kolom resi harian tetap terkunci selama pengakuan membaca belum
+tercatat. Setelah ditutup, muncul pemberitahuan bahwa input resi masih terkunci
+beserta tombol "Buka pengingat". Menekan tindakan lain pada pesanan (tindak
+lanjut, riwayat, ubah permintaan) akan membuka kembali pengingat tersebut.
+
 Konfirmasi sudah disiapkan membutuhkan centang dan pengakuan membaca hari ini.
 Ada kendala wajib disertai alasan dan tidak menutup pengingat. Riwayat menyimpan
 nama pelaksana, waktu, catatan serta salinan gambar/permintaan saat aktivitas.
