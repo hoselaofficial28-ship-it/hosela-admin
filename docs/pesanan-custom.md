@@ -1,6 +1,6 @@
-﻿# Pesanan custom di Input Resi
+# Pesanan custom di Input Resi
 
-Owner membuat permintaan melalui tab Pesanan Custom di Input Resi. Isi toko, nomor
+Semua pengguna yang punya akses Input Resi (owner maupun karyawan) dapat membuat permintaan melalui tab Pesanan Custom. Isi toko, nomor
 pesanan/username pembeli, target kirim dan catatan. Satu gambar JPG/PNG/WebP opsional
 diperkecil menjadi JPEG di perangkat sebelum disimpan bersama data.
 
@@ -110,7 +110,7 @@ dilakukan saat aktivasi.
 | --- | --- |
 | `src/app/(dashboard)/input/page.tsx` | Tab custom, jumlah aktif, penguncian kolom angka, pesan penolakan penyimpanan. |
 | `src/components/CustomOrders.tsx` | Tembok membaca, pengingat saat scroll, formulir gambar/catatan, konfirmasi, riwayat berbentuk daftar, dan hapus manual. |
-| `src/app/api/custom-orders/route.ts` | Akses login, izin membuat/mengubah/menghapus untuk owner, aksi admin dan pembacaan riwayat. |
+| `src/app/api/custom-orders/route.ts` | Akses login, pembuatan untuk semua pengguna ber-akses input, ubah/hapus khusus owner, aksi admin dan pembacaan riwayat. |
 | `src/app/api/shipments/route.ts` | Tolak penyimpanan resi saat ada permintaan belum dibaca. |
 | `src/lib/custom-orders.ts` | Penyimpanan SQLite/PostgreSQL, transaksi, arsip salinan permintaan, dan penghapusan riwayat selesai. |
 | `src/lib/custom-order-types.ts` | Validasi data, tipe data dan hari operasional WIB. |
@@ -141,4 +141,5 @@ persetujuan otomatis karena akan menyalin seluruh rahasia produksi ke lokal,
 sehingga perlu persetujuan khusus sebelum tindakan itu dilanjutkan. Kode dapat
 dirilis sebelum aktivasi: bila tabel custom belum ada, pemberitahuan ditampilkan
 dan input resi biasa tetap tersedia. Localhost belum tersambung ke database live.
+
 

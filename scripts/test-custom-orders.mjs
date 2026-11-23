@@ -94,11 +94,26 @@ try {
     session = { ...admin, permissions: [] };
     assert.equal((await api.GET(req)).status, 403);
   });
-  await check('Admin dapat membaca, tetapi tidak mengubah permintaan owner', async () => {
+  await check('Semua admin ber-akses input boleh membuat pesanan; ubah/hapus tetap owner', async () => {
     session = { ...admin, permissions: ['input'] };
-    assert.equal((await api.GET(new NextRequest('http://test/api/custom-orders'))).status, 200);
-    const req = new NextRequest('http://test/api/custom-orders', { method: 'POST', body: JSON.stringify({ ...payload, action: 'create' }) });
-    assert.equal((await api.POST(req)).status, 403);
+    const listing = await api.GET(new NextRequest('http://test/api/custom-orders'));
+    assert.equal(listing.status, 200);
+    const summary = await listing.json();
+    assert.equal(summary.can_create, true);
+    assert.equal(summary.can_manage, false);
+    const created = await api.POST(new NextRequest('http://test/api/custom-orders', { method: 'POST', body: JSON.stringify({ ...payload, order_ref: 'BUAT-ADMIN', action: 'create' }) }));
+    assert.equal(created.status, 200);
+    const newId = (await created.json()).id;
+    const saved = db.prepare('SELECT created_by FROM custom_orders WHERE id=?').get(newId);
+    assert.equal(saved.created_by, admin.name);
+    const forbiddenUpdate = await api.POST(new NextRequest('http://test/api/custom-orders', { method: 'POST', body: JSON.stringify({ ...payload, id: newId, revision: 1, action: 'update' }) }));
+    assert.equal(forbiddenUpdate.status, 403);
+    const forbiddenDelete = await api.POST(new NextRequest('http://test/api/custom-orders', { method: 'POST', body: JSON.stringify({ action: 'delete', id: newId }) }));
+    assert.equal(forbiddenDelete.status, 403);
+    session = owner;
+    const ownerSummary = await (await api.GET(new NextRequest('http://test/api/custom-orders'))).json();
+    assert.equal(ownerSummary.can_manage, true);
+    assert.equal(ownerSummary.can_create, true);
   });
   await check('API menolak JSON rusak dan permintaan berlebihan', async () => {
     const bad = new NextRequest('http://test/api/custom-orders', { method: 'POST', body: '{' });

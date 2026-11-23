@@ -79,6 +79,7 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
   const [fetchError, setFetchError] = useState('');
   const [busy, setBusy] = useState(false);
   const [canManage, setCanManage] = useState(false);
+  const [canCreate, setCanCreate] = useState(false);
   const [setupRequired, setSetupRequired] = useState(false);
   const [detail, setDetail] = useState<CustomOrder | null>(null);
   const [viewing, setViewing] = useState<CustomOrder | null>(null);
@@ -111,7 +112,7 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
     const requestId = ++refreshRequest.current;
     return request('/api/custom-orders').then(data => {
       if (!alive.current || requestId !== refreshRequest.current) return;
-      setOrders(data.orders); setCanManage(data.can_manage); setLoaded(true); setFetchError('');
+      setOrders(data.orders); setCanManage(data.can_manage); setCanCreate(Boolean(data.can_create ?? data.can_manage)); setLoaded(true); setFetchError('');
       setSetupRequired(Boolean(data.setup_required));
       setCompletedTotal(data.completed_total || 0);
       return data as { orders: CustomOrder[] };
@@ -231,7 +232,7 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
       {viewActive && !management && <div className="mt-4 space-y-3">{active.map(order => <div key={order.id} className="rounded-lg border bg-white p-3"><p className="font-semibold">{order.store_name} · {order.order_ref}</p><p className="mt-1 whitespace-pre-wrap break-words text-sm">{order.notes}</p><button type="button" disabled={busy} className={`${button} mt-2`} onClick={() => openFollowUp(order)}>Buka & tindak lanjuti</button></div>)}</div>}
     </section>}
     {management && !setupRequired && <section className="space-y-4 rounded-xl border border-gray-200 bg-white p-4 sm:p-5">
-      <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-lg font-bold">Pesanan Custom</h3>{canManage && <button type="button" disabled={busy} className={primary} onClick={() => { setError(''); setForm({ store_id: stores[0]?.id, order_ref: '', notes: '', image: '', ship_date: customOrderDay() }); }}><Plus className="mr-1 inline" size={18} />Pesanan Custom</button>}</div>
+      <div className="flex flex-wrap items-center justify-between gap-3"><h3 className="text-lg font-bold">Pesanan Custom</h3>{canCreate && <button type="button" disabled={busy} className={primary} onClick={() => { setError(''); setForm({ store_id: stores[0]?.id, order_ref: '', notes: '', image: '', ship_date: customOrderDay() }); }}><Plus className="mr-1 inline" size={18} />Pesanan Custom</button>}</div>
       <div className="flex flex-wrap gap-2"><button type="button" aria-pressed={!historyMode} className={`${button} ${!historyMode ? 'bg-gray-900 text-white' : ''}`} onClick={() => { setHistoryMode(false); setNotice(''); }}>Aktif ({active.length})</button><button type="button" aria-pressed={historyMode} className={`${button} ${historyMode ? 'bg-gray-900 text-white' : ''}`} onClick={() => { setHistoryMode(true); setHistoryVersion(v => v + 1); setNotice(''); }}>Riwayat selesai ({completedTotal})</button></div>
       {historyMode && <p className="text-sm text-gray-600">Foto disimpan selama 7 hari setelah konfirmasi selesai. Catatan dan riwayat pelaksana tetap tersimpan.</p>}
       {historyMode && <label className="block">Cari riwayat selesai<input type="search" className={`${input} mt-1`} placeholder="Nomor pesanan, pembeli, toko, atau catatan" value={search} onChange={e => { setSearch(e.target.value); setHistoryLoading(true); setNotice(''); }} /></label>}

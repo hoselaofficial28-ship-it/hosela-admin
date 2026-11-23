@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
       if (!Number.isSafeInteger(offset) || offset < 0) return NextResponse.json({ error: 'Halaman riwayat tidak valid.' }, { status: 400 });
       return NextResponse.json(await completedCustomOrders(req.nextUrl.searchParams.get('q') || '', offset), { headers: { 'Cache-Control': 'no-store' } });
     }
-    return NextResponse.json({ orders: await listCustomOrders(user.id, true), completed_total: await completedCustomOrderCount(), can_manage: user.role === 'owner' }, { headers: { 'Cache-Control': 'no-store' } });
+    return NextResponse.json({ orders: await listCustomOrders(user.id, true), completed_total: await completedCustomOrderCount(), can_manage: user.role === 'owner', can_create: true }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     if (!req.nextUrl.searchParams.has('history') && isCustomOrderSetupMissing(error)) {
       return NextResponse.json({ orders: [], can_manage: false, setup_required: true }, { headers: { 'Cache-Control': 'no-store' } });
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
     if (raw.length > 1_500_000) return NextResponse.json({ error: 'Ukuran permintaan terlalu besar.' }, { status: 413 });
     const body = JSON.parse(raw);
     if (!body || Array.isArray(body) || typeof body !== 'object') return NextResponse.json({ error: 'Data tidak valid.' }, { status: 400 });
-    if (['create', 'update', 'delete'].includes(body.action) && user.role !== 'owner') return NextResponse.json({ error: 'Hanya owner yang dapat membuat, mengubah, atau menghapus riwayat permintaan custom.' }, { status: 403 });
+    if (['update', 'delete'].includes(body.action) && user.role !== 'owner') return NextResponse.json({ error: 'Hanya owner yang dapat mengubah permintaan atau menghapus riwayat.' }, { status: 403 });
     await maintainCustomPhotos();
     if (body.action === 'delete') return NextResponse.json({ id: body.id, deleted: await deleteCompletedCustomOrders(body.ids ?? body.id) });
     return NextResponse.json({ id: await mutateCustomOrder(user, body) });
