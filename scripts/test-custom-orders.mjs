@@ -281,5 +281,31 @@ try {
     await assert.rejects(repo.deleteCompletedCustomOrders([]), /Pilih/);
     await assert.rejects(repo.deleteCompletedCustomOrders(Array.from({ length: 201 }, (_, n) => `x${n}`)), /200/);
   });
+  await check('SQL PostgreSQL berurutan $1..$n tanpa merusak "?id=" pada URL foto', async () => {
+    const captured = [];
+    const pgMock = {
+      hasPostgres: () => true,
+      pgQuery: async (sql, params) => {
+        captured.push({ sql, params });
+        return { rows: /COUNT\(\*\) AS count/i.test(sql) ? [{ count: 0 }] : [], rowCount: 0 };
+      },
+      pgTransaction: async () => {},
+    };
+    const pgRepo = load('src/lib/custom-orders.ts', { './db': { getDb: () => db }, './pg': pgMock, './custom-order-types': types });
+    const expected = sql => Math.max(0, ...(sql.match(/\$(\d+)/g) || ['$0']).map(mark => Number(mark.slice(1))));
+    await pgRepo.listCustomOrders(7, true);
+    const list = captured[0];
+    assert.match(list.sql, /photo\?id=/);
+    assert.doesNotMatch(list.sql, /\$\d+id=/);
+    assert.match(list.sql, /e\.actor_id=\$1 AND e\.day=\$2/);
+    assert.equal(expected(list.sql), list.params.length);
+    assert.deepEqual(list.params, [7, types.customOrderDay()]);
+    await pgRepo.completedCustomOrders('uji');
+    const done = captured.find(entry => entry.sql.includes('ORDER BY o.updated_at DESC'));
+    assert.ok(done, 'query daftar riwayat tertangkap');
+    assert.match(done.sql, /photo\?id=/);
+    assert.equal(expected(done.sql), done.params.length);
+    assert.equal(done.params.length, 4);
+  });
   console.log(`${checks} pengujian lolos; database operasional tidak dibuka.`);
 } finally { db.close(); }

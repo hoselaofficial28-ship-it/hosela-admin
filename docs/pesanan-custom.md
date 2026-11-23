@@ -1,4 +1,4 @@
-# Pesanan custom di Input Resi
+﻿# Pesanan custom di Input Resi
 
 Owner membuat permintaan melalui tab Pesanan Custom di Input Resi. Isi toko, nomor
 pesanan/username pembeli, target kirim dan catatan. Satu gambar JPG/PNG/WebP opsional
@@ -25,7 +25,7 @@ Perubahan oleh owner menaikkan versi, membuka ulang pesanan, dan mempertahankan
 semua riwayat. Penghapusan hanya tersedia untuk owner dan hanya untuk pesanan
 yang sudah selesai: satu riwayat dihapus permanen bersama foto dan seluruh
 aktivitasnya setelah konfirmasi. Pesanan aktif tidak dapat dihapus.
-Foto pesanan selesai tersedia selama 7 × 24 jam dari waktu konfirmasi selesai.
+Foto pesanan selesai tersedia selama 7 Ã— 24 jam dari waktu konfirmasi selesai.
 Setelah batas itu, foto tidak dilayani lagi oleh API dan dihapus dari tabel
 pesanan serta seluruh salinan gambar pada riwayat aktivitas. Catatan, nama
 pelaksana, waktu, dan status tetap tersimpan. Foto pesanan aktif tidak dihapus.
@@ -116,11 +116,11 @@ dilakukan saat aktivasi.
 | `src/lib/custom-order-types.ts` | Validasi data, tipe data dan hari operasional WIB. |
 | `migrations/20261121-custom-orders.sql` | Dua tabel dan dua indeks baru, tanpa mengubah tabel lama. |
 | `scripts/migrate-custom-orders.mjs` | Aktivasi eksplisit menggunakan `--apply`. |
-| `scripts/test-custom-orders.mjs` | 24 pengujian logika dan API menggunakan SQLite di memori, termasuk retensi foto, penghapusan tunggal/massal, otorisasi, dan ukuran payload. |
+| `scripts/test-custom-orders.mjs` | 25 pengujian logika dan API menggunakan SQLite di memori, termasuk retensi foto, penghapusan tunggal/massal, otorisasi, dan ukuran payload. |
 | `scripts/test-custom-orders-ui.mjs` | Simulasi handler komponen: simpan owner, tindak lanjut setelah membaca, respons jaringan lama, klik ganda, selesai, daftar riwayat, konfirmasi hapus, dan hapus massal. Tidak membuka browser atau database operasional. |
 | `scripts/test-db-initialization.mjs` | Dua pengujian pembukaan database lama dan pemulihan setelah gagal inisialisasi. |
 
-Pemeriksaan implementasi: 24 pengujian custom, enam skenario handler UI, dan dua pengujian database lolos, lint semua berkas fitur lolos,
+Pemeriksaan implementasi: 25 pengujian custom, enam skenario handler UI, dan dua pengujian database lolos, lint semua berkas fitur lolos,
 build Next.js lolos. Lint global masih melaporkan 18 error di berkas lama:
 empat script migrasi/pemulihan CommonJS, Dashboard, Lab Riset dan Rapat.
 Bagian tersebut belum diubah dalam pekerjaan ini. Pengujian browser PC/HP
@@ -141,3 +141,4 @@ persetujuan otomatis karena akan menyalin seluruh rahasia produksi ke lokal,
 sehingga perlu persetujuan khusus sebelum tindakan itu dilanjutkan. Kode dapat
 dirilis sebelum aktivasi: bila tabel custom belum ada, pemberitahuan ditampilkan
 dan input resi biasa tetap tersedia. Localhost belum tersambung ke database live.
+

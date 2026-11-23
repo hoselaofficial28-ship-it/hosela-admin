@@ -17,7 +17,25 @@ const orderColumns = `o.id,o.store_id,o.order_ref,o.ship_date,o.notes,o.revision
 function publicOrder(order: CustomOrder) {
   return customPhotoExpired(order) ? { ...order, image: '', photo_expired: true } : order;
 }
-const placeholders = (sql: string) => { let n = 0; return sql.replace(/\?/g, () => `$${++n}`); };
+// Replace SQLite placeholders outside string literals only: the photo URL literally
+// contains "?id=", which must not turn into "$1".
+export function pgPlaceholders(sql: string) {
+  let n = 0;
+  let quoted = false;
+  let out = '';
+  for (let i = 0; i < sql.length; i++) {
+    const char = sql[i];
+    if (char === "'") {
+      if (quoted && sql[i + 1] === "'") { out += "''"; i++; continue; }
+      quoted = !quoted;
+      out += char;
+      continue;
+    }
+    out += char === '?' && !quoted ? `$${++n}` : char;
+  }
+  return out;
+}
+const placeholders = pgPlaceholders;
 async function rows<T>(sql: string, params: (string | number)[] = []): Promise<T[]> {
   if (hasPostgres()) return (await pgQuery(placeholders(sql), params)).rows as T[];
   return getDb().prepare(sql).all(...params) as T[];
