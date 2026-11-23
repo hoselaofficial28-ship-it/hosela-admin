@@ -57,7 +57,7 @@ globalThis.fetch=async (url,options={})=>{
     if(body.action==='create') data=[{id:'own',store_id:1,store_name:'Uji',order_ref:'FIXTURE',notes:'Merah',image:'',revision:1,status:'open',needs_read:true,created_by:'Owner',created_at:stamp,updated_at:stamp}];
     if(body.action==='read') data=data.map(o=>({...o,needs_read:false}));
     if(body.action==='complete')data=data.map(o=>({...o,status:'done'}));
-    if(body.action==='delete')data=data.filter(o=>o.id!==body.id);
+    if(body.action==='delete'){const ids=body.ids||[body.id];data=data.filter(o=>!ids.includes(o.id));}
     return Response.json({id:'own'});
   }
   if(holdNext){holdNext=false; const snapshot=structuredClone(data); return new Promise(resolve=>{staleResolve=()=>resolve(Response.json({orders:snapshot,can_manage:true,completed_total:0}));});}
@@ -124,6 +124,23 @@ try{
   assert.equal(nodes().filter(n=>n.type==='li').length,0,'Daftar langsung kosong setelah hapus');
   assert.ok(nodes().some(n=>n.props?.role==='status'&&content(n).includes('dihapus permanen')));
   console.log('PASS UI: riwayat selesai berbentuk daftar dan tombol hapus meminta konfirmasi lebih dulu.');
+  data=[{id:'m1',store_id:1,store_name:'Uji',order_ref:'MASS-1',notes:'Satu',image:'',revision:1,status:'done',needs_read:false,created_by:'Owner',created_at:stamp,updated_at:stamp},
+        {id:'m2',store_id:1,store_name:'Uji',order_ref:'MASS-2',notes:'Dua',image:'',revision:1,status:'done',needs_read:false,created_by:'Owner',created_at:stamp,updated_at:stamp}];
+  button('Riwayat selesai (0)').props.onClick();await settle();
+  await new Promise(resolve=>setTimeout(resolve,300));await settle();
+  assert.equal(nodes().filter(n=>n.type==='li').length,2);
+  const pickAll=nodes().find(n=>n.type==='input'&&n.props?.['aria-label']==='Pilih semua riwayat');
+  assert.ok(pickAll,'Harus ada centang pilih semua');
+  pickAll.props.onChange({target:{checked:true}});await settle();
+  assert.ok(button('Hapus terpilih (2)'),'Tombol hapus massal muncul setelah memilih');
+  button('Hapus terpilih (2)').props.onClick();await settle();
+  assert.ok(modal('Hapus 2 riwayat pesanan'));
+  button('Hapus 2 permanen').props.onClick();await settle();
+  await new Promise(resolve=>setTimeout(resolve,300));await settle();
+  assert.equal(data.length,0,'Dua riwayat terhapus sekaligus');
+  assert.equal(nodes().filter(n=>n.type==='li').length,0);
+  assert.ok(nodes().some(n=>n.props?.role==='status'&&content(n).includes('2 riwayat pesanan dihapus')));
+  console.log('PASS UI: centang pilih semua lalu hapus massal dengan konfirmasi.');
 }finally{
   slots.forEach(slot=>slot?.cleanup?.());
   globalThis.fetch=originalFetch;globalThis.document=originalDocument;globalThis.window=originalWindow;

@@ -23,12 +23,13 @@ async function rows<T>(sql: string, params: (string | number)[] = []): Promise<T
   return getDb().prepare(sql).all(...params) as T[];
 }
 // The conditional write and its audit event either both commit or both roll back.
-async function batch(statements: { sql: string; params: (string | number)[]; check?: boolean }[]) {
+async function batch(statements: { sql: string; params: (string | number)[]; check?: boolean; expect?: number }[]) {
   if (hasPostgres()) {
     await pgTransaction(async client => {
       for (const s of statements) {
         const result = await client.query(placeholders(s.sql), s.params);
         if (s.check && result.rowCount !== 1) throw new Error('CONFLICT');
+        if (s.expect !== undefined && result.rowCount !== s.expect) throw new Error('CONFLICT');
       }
     });
   } else {
@@ -37,6 +38,7 @@ async function batch(statements: { sql: string; params: (string | number)[]; che
       for (const s of statements) {
         const result = db.prepare(s.sql).run(...s.params);
         if (s.check && result.changes !== 1) throw new Error('CONFLICT');
+        if (s.expect !== undefined && result.changes !== s.expect) throw new Error('CONFLICT');
       }
     })();
   }
@@ -112,18 +114,25 @@ export async function completedCustomOrderCount() {
   const result = await rows<{ count: string | number }>(`SELECT COUNT(*) AS count FROM ${table('custom_orders')} WHERE status='done'`);
   return Number(result[0].count);
 }
-// Owner-only manual purge of one finished record: the order row, its photo and
-// every activity snapshot go together. Active orders are never deletable.
-export async function deleteCompletedCustomOrder(id: unknown) {
-  if (typeof id !== 'string' || !id || id.length > 64) throw new Error('Pesanan tidak valid.');
-  const found = await rows<{ status: string }>(`SELECT status FROM ${table('custom_orders')} WHERE id=?`, [id]);
-  if (!found.length) throw new Error('Pesanan tidak ditemukan.');
-  if (found[0].status !== 'done') throw new Error('Hanya riwayat pesanan selesai yang dapat dihapus.');
+// Owner-only manual purge of finished records: the order rows, their photos and
+// every activity snapshot go together, in one transaction. Active orders are never deletable.
+export async function deleteCompletedCustomOrders(input: unknown) {
+  const list = Array.isArray(input) ? input : [input];
+  const ids = [...new Set(list.filter((id): id is string => typeof id === 'string' && id.length > 0 && id.length <= 64))];
+  if (!ids.length) throw new Error('Pilih riwayat yang akan dihapus.');
+  if (ids.length > 200) throw new Error('Maksimal 200 riwayat sekali hapus.');
+  const marks = ids.map(() => '?').join(',');
+  const found = await rows<{ id: string; status: string }>(`SELECT id,status FROM ${table('custom_orders')} WHERE id IN (${marks})`, ids);
+  if (found.length !== ids.length) throw new Error('Pesanan tidak ditemukan.');
+  if (found.some(order => order.status !== 'done')) throw new Error('Hanya riwayat pesanan selesai yang dapat dihapus.');
   await batch([
-    { sql: `DELETE FROM ${table('custom_order_events')} WHERE order_id=?`, params: [id] },
-    { sql: `DELETE FROM ${table('custom_orders')} WHERE id=? AND status='done'`, params: [id], check: true },
+    { sql: `DELETE FROM ${table('custom_order_events')} WHERE order_id IN (${marks})`, params: ids },
+    { sql: `DELETE FROM ${table('custom_orders')} WHERE id IN (${marks}) AND status='done'`, params: ids, expect: ids.length },
   ]);
-  return id;
+  return ids.length;
+}
+export async function deleteCompletedCustomOrder(id: unknown) {
+  return deleteCompletedCustomOrders([id]);
 }
 export async function mutateCustomOrder(user: SessionUser, body: Record<string, unknown>) {
   const action = body.action;

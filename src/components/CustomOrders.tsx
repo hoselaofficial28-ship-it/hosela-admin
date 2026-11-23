@@ -82,7 +82,8 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
   const [setupRequired, setSetupRequired] = useState(false);
   const [detail, setDetail] = useState<CustomOrder | null>(null);
   const [viewing, setViewing] = useState<CustomOrder | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<CustomOrder | null>(null);
+  const [deleteTargets, setDeleteTargets] = useState<CustomOrder[]>([]);
+  const [selected, setSelected] = useState<string[]>([]);
   const [history, setHistory] = useState<CustomOrderEvent[] | null>(null);
   const [historyMode, setHistoryMode] = useState(false);
   const [completedTotal, setCompletedTotal] = useState(0);
@@ -127,7 +128,7 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
     if (!historyMode || !management) return;
     const requestId = ++historyRequest.current;
     const timer = window.setTimeout(() => {
-      setHistoryLoading(true); setHistoryError('');
+      setHistoryLoading(true); setHistoryError(''); setSelected([]);
       request(`/api/custom-orders?completed=true&q=${encodeURIComponent(search)}`).then(data => {
         if (requestId === historyRequest.current) setCompleted({ orders: data.orders, total: data.total || 0, has_more: Boolean(data.has_more) });
       }).catch(e => {
@@ -149,7 +150,7 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
   const pending = active.filter(o => customOrderNeedsPopup(o, deferred.management === management ? deferred.keys : [], management));
   // A pending follow-up returns to its detail dialog after the read receipt.
   // Do not interrupt an open edit/history dialog with background polling.
-  const gate = form || history || viewing || deleteTarget ? undefined : pending.find(o => o.id === detail?.id) || pending[0];
+  const gate = form || history || viewing || deleteTargets.length > 0 ? undefined : pending.find(o => o.id === detail?.id) || pending[0];
   const gateKey = gate ? `${gate.id}:${gate.revision}:${customOrderDay()}` : '';
   const readChecked = Boolean(gateKey) && readAcknowledged === gateKey;
   useEffect(() => { onBlocked(!loaded || Boolean(fetchError) || pending.length > 0); onCount(active.length); }, [loaded, fetchError, pending.length, active.length, onBlocked, onCount]);
@@ -170,8 +171,11 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
         // Keep the selected follow-up and any draft text intact.
       } else {
         setHistoryVersion(version => version + 1);
-        setDetail(null); setHistory(null); setForm(null); setViewing(null); setDeleteTarget(null); setConfirmed(false); setNote('');
-        if (body.action === 'delete') setNotice('Riwayat pesanan dihapus permanen.');
+        setDetail(null); setHistory(null); setForm(null); setViewing(null); setDeleteTargets([]); setConfirmed(false); setNote('');
+        if (body.action === 'delete') {
+          setSelected([]);
+          setNotice(body.ids && Array.isArray(body.ids) && body.ids.length > 1 ? `${body.ids.length} riwayat pesanan dihapus permanen.` : 'Riwayat pesanan dihapus permanen.');
+        }
       }
       const latest = await refresh();
       if (body.action === 'read' && latest) {
@@ -224,7 +228,12 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
       {historyMode && <label className="block">Cari riwayat selesai<input type="search" className={`${input} mt-1`} placeholder="Nomor pesanan, pembeli, toko, atau catatan" value={search} onChange={e => { setSearch(e.target.value); setHistoryLoading(true); setNotice(''); }} /></label>}
       {historyMode && notice && <p role="status" className="rounded-lg border border-green-300 bg-green-50 p-3 text-green-900">{notice}</p>}
       {historyMode && historyError && <p role="alert" className="text-red-700">{historyError} <button className={button} onClick={() => setHistoryVersion(v => v + 1)}>Coba lagi</button></p>}
-      {historyMode ? <ul aria-label="Riwayat pesanan selesai" className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">{completed.orders.map(order => <li key={order.id} className="flex items-center gap-3 px-2 py-2 sm:px-3">
+      {historyMode && canManage && completed.orders.length > 0 && <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2">
+        <label className="flex min-h-11 cursor-pointer items-center gap-2 text-sm font-medium text-gray-700"><input type="checkbox" className="size-5" checked={completed.orders.every(order => selected.includes(order.id))} onChange={e => setSelected(e.target.checked ? completed.orders.map(order => order.id) : [])} aria-label="Pilih semua riwayat" /><span>Pilih semua ({completed.orders.length})</span></label>
+        {selected.length > 0 && <button type="button" disabled={busy} className={`${button} border-red-600 bg-red-600 text-white hover:bg-red-700`} onClick={() => { setError(''); setNotice(''); setDeleteTargets(completed.orders.filter(order => selected.includes(order.id))); }}><Trash2 size={18} className="mr-1 inline" />Hapus terpilih ({selected.length})</button>}
+      </div>}
+      {historyMode ? <ul aria-label="Riwayat pesanan selesai" className="divide-y divide-gray-100 overflow-hidden rounded-lg border border-gray-200">{completed.orders.map(order => <li key={order.id} className={`flex items-center gap-3 px-2 py-2 sm:px-3 ${selected.includes(order.id) ? 'bg-red-50/40' : ''}`}>
+        {canManage && <input type="checkbox" className="size-5 shrink-0" checked={selected.includes(order.id)} onChange={e => setSelected(current => e.target.checked ? [...current.filter(id => id !== order.id), order.id] : current.filter(id => id !== order.id))} aria-label={`Pilih ${order.order_ref}`} />}
         <button type="button" onClick={() => setViewing(order)} aria-label={`Buka detail ${order.order_ref}`} className="shrink-0 rounded-lg">
           {order.image ? <Image unoptimized src={order.image} alt="" width={96} height={96} className="size-14 rounded-lg border border-gray-200 object-cover" /> : <span className="flex size-14 items-center justify-center rounded-lg border border-dashed border-gray-300 bg-gray-50 text-gray-400"><ImageOff size={20} /></span>}
         </button>
@@ -235,7 +244,7 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
         </button>
         <div className="flex shrink-0 items-center gap-1">
           <button type="button" disabled={busy} className={`${button} px-3`} aria-label={`Riwayat aktivitas ${order.order_ref}`} onClick={() => openHistory(order)}><History size={18} /></button>
-          {canManage && <button type="button" disabled={busy} className={`${button} border-red-200 px-3 text-red-700 hover:bg-red-50`} aria-label={`Hapus riwayat ${order.order_ref}`} onClick={() => { setError(''); setNotice(''); setDeleteTarget(order); }}><Trash2 size={18} /></button>}
+          {canManage && <button type="button" disabled={busy} className={`${button} border-red-200 px-3 text-red-700 hover:bg-red-50`} aria-label={`Hapus riwayat ${order.order_ref}`} onClick={() => { setError(''); setNotice(''); setDeleteTargets([order]); }}><Trash2 size={18} /></button>}
         </div>
       </li>)}</ul> : <div className="grid gap-4 md:grid-cols-2">{active.map(order => <article key={order.id} className="min-w-0 space-y-3 rounded-lg border border-gray-200 p-4">
         <OrderDetail order={order} />
@@ -263,21 +272,22 @@ export default function CustomOrders({ stores, management, onBlocked, onCount }:
         <button type="button" disabled={busy || !note.trim()} className={`${button} w-full`} onClick={() => act({ action: 'issue', id: detail.id, revision: detail.revision, note })}>Ada kendala — pengingat tetap aktif</button>
       </div>}
     </Modal>}
-    {!gate && !deleteTarget && viewing && <Modal title="Detail pesanan selesai" onClose={() => { if (!busy) setViewing(null); }}>
+    {!gate && deleteTargets.length === 0 && viewing && <Modal title="Detail pesanan selesai" onClose={() => { if (!busy) setViewing(null); }}>
       <OrderDetail order={viewing} />
       <p className="mt-3 rounded-lg bg-gray-50 p-3 text-sm text-gray-600">Pesanan ini sudah dikonfirmasi selesai. Catatan dan foto tetap tersimpan sampai batas 7 hari atau sampai riwayat dihapus manual.</p>
       <div className="mt-4 flex flex-wrap gap-2">
         <button type="button" disabled={busy} className={button} onClick={() => openHistory(viewing)}>Riwayat aktivitas</button>
         {canManage && <button type="button" disabled={busy} className={button} onClick={() => openEdit(viewing)}>Ubah permintaan</button>}
-        {canManage && <button type="button" disabled={busy} className={`${button} border-red-200 text-red-700 hover:bg-red-50`} onClick={() => { setNotice(''); setError(''); setDeleteTarget(viewing); }}><Trash2 size={18} className="mr-1 inline" />Hapus riwayat</button>}
+        {canManage && <button type="button" disabled={busy} className={`${button} border-red-200 text-red-700 hover:bg-red-50`} onClick={() => { setNotice(''); setError(''); setDeleteTargets([viewing]); }}><Trash2 size={18} className="mr-1 inline" />Hapus riwayat</button>}
       </div>
     </Modal>}
-    {!gate && deleteTarget && <Modal title="Hapus riwayat pesanan" onClose={() => { if (!busy) setDeleteTarget(null); }}>
-      <p className="text-gray-700">Riwayat <strong className="break-words">{deleteTarget.order_ref}</strong> beserta foto dan seluruh riwayat aktivitasnya akan dihapus permanen. Tindakan ini tidak dapat dibatalkan.</p>
+    {!gate && deleteTargets.length > 0 && <Modal title={deleteTargets.length > 1 ? `Hapus ${deleteTargets.length} riwayat pesanan` : 'Hapus riwayat pesanan'} onClose={() => { if (!busy) setDeleteTargets([]); }}>
+      <p className="text-gray-700">{deleteTargets.length > 1 ? 'Riwayat terpilih beserta foto dan seluruh aktivitasnya akan dihapus permanen.' : <>Riwayat <strong className="break-words">{deleteTargets[0].order_ref}</strong> beserta foto dan seluruh riwayat aktivitasnya akan dihapus permanen.</>} Tindakan ini tidak dapat dibatalkan.</p>
+      {deleteTargets.length > 1 && <ul className="mt-3 max-h-40 space-y-1 overflow-y-auto rounded-lg border border-gray-200 p-3 text-sm text-gray-700">{deleteTargets.map(order => <li key={order.id} className="truncate">• {order.order_ref} · {order.store_name}</li>)}</ul>}
       {errorBox}
       <div className="mt-4 flex flex-wrap gap-2">
-        <button type="button" disabled={busy} className={button} onClick={() => setDeleteTarget(null)}>Batal</button>
-        <button type="button" disabled={busy} className={`${button} border-red-600 bg-red-600 text-white hover:bg-red-700`} onClick={() => void act({ action: 'delete', id: deleteTarget.id })}>{busy ? 'Menghapus…' : 'Hapus permanen'}</button>
+        <button type="button" disabled={busy} className={button} onClick={() => setDeleteTargets([])}>Batal</button>
+        <button type="button" disabled={busy} className={`${button} border-red-600 bg-red-600 text-white hover:bg-red-700`} onClick={() => void act({ action: 'delete', ids: deleteTargets.map(order => order.id) })}>{busy ? 'Menghapus…' : deleteTargets.length > 1 ? `Hapus ${deleteTargets.length} permanen` : 'Hapus permanen'}</button>
       </div>
     </Modal>}
     {!gate && form && <Modal title={form.id ? 'Ubah permintaan custom' : 'Tambah pesanan custom'} onClose={() => { if (!busy && !photoBusy) setForm(null); }}>

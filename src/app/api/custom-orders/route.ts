@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { canAccessFeature, getSession } from '@/lib/auth';
-import { completedCustomOrders, completedCustomOrderCount, customOrderForEdit, customOrderHistory, deleteCompletedCustomOrder, isCustomOrderSetupMissing, listCustomOrders, maintainCustomPhotos, mutateCustomOrder } from '@/lib/custom-orders';
+import { completedCustomOrders, completedCustomOrderCount, customOrderForEdit, customOrderHistory, deleteCompletedCustomOrders, isCustomOrderSetupMissing, listCustomOrders, maintainCustomPhotos, mutateCustomOrder } from '@/lib/custom-orders';
 
 function failure(error: unknown) {
   const message = error instanceof Error ? error.message : 'Kesalahan penyimpanan pesanan custom.';
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
     if (!body || Array.isArray(body) || typeof body !== 'object') return NextResponse.json({ error: 'Data tidak valid.' }, { status: 400 });
     if (['create', 'update', 'delete'].includes(body.action) && user.role !== 'owner') return NextResponse.json({ error: 'Hanya owner yang dapat membuat, mengubah, atau menghapus riwayat permintaan custom.' }, { status: 403 });
     await maintainCustomPhotos();
-    if (body.action === 'delete') return NextResponse.json({ id: await deleteCompletedCustomOrder(body.id) });
+    if (body.action === 'delete') return NextResponse.json({ id: body.id, deleted: await deleteCompletedCustomOrders(body.ids ?? body.id) });
     return NextResponse.json({ id: await mutateCustomOrder(user, body) });
   } catch (error) { return failure(error); }
 }

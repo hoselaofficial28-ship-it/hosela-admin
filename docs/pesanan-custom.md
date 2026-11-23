@@ -35,7 +35,11 @@ Riwayat selesai ditampilkan sebagai daftar satu baris per pesanan: foto kecil,
 nomor pesanan, toko dan tanggal selesai, serta potongan catatan. Mengetuk baris
 atau foto membuka detail selesai; ikon riwayat aktivitas dan ikon tempat sampah
 (owner) berada di ujung kanan baris. Ikon tempat sampah membuka konfirmasi
-sebelum data dihapus permanen.
+sebelum data dihapus permanen. Owner juga mendapat centang per baris dan centang
+"Pilih semua" untuk menghapus beberapa riwayat sekaligus; jumlah yang terpilih
+ditampilkan pada tombol hapus dan pada dialog konfirmasi. Penghapusan massal
+dibatasi 200 riwayat sekali kirim dan ditolak bila salah satunya bukan pesanan
+selesai.
 
 Setelah owner membuat atau mengubah permintaan, popup untuk versi tersebut
 ditunda selama owner masih berada di tab Pesanan Custom pada kunjungan itu.
@@ -106,11 +110,11 @@ dilakukan saat aktivasi.
 | `src/lib/custom-order-types.ts` | Validasi data, tipe data dan hari operasional WIB. |
 | `migrations/20261121-custom-orders.sql` | Dua tabel dan dua indeks baru, tanpa mengubah tabel lama. |
 | `scripts/migrate-custom-orders.mjs` | Aktivasi eksplisit menggunakan `--apply`. |
-| `scripts/test-custom-orders.mjs` | 23 pengujian logika dan API menggunakan SQLite di memori, termasuk retensi foto, penghapusan riwayat, otorisasi, dan ukuran payload. |
-| `scripts/test-custom-orders-ui.mjs` | Simulasi handler komponen: simpan owner, tindak lanjut setelah membaca, respons jaringan lama, klik ganda, selesai, daftar riwayat, dan konfirmasi hapus. Tidak membuka browser atau database operasional. |
+| `scripts/test-custom-orders.mjs` | 24 pengujian logika dan API menggunakan SQLite di memori, termasuk retensi foto, penghapusan tunggal/massal, otorisasi, dan ukuran payload. |
+| `scripts/test-custom-orders-ui.mjs` | Simulasi handler komponen: simpan owner, tindak lanjut setelah membaca, respons jaringan lama, klik ganda, selesai, daftar riwayat, konfirmasi hapus, dan hapus massal. Tidak membuka browser atau database operasional. |
 | `scripts/test-db-initialization.mjs` | Dua pengujian pembukaan database lama dan pemulihan setelah gagal inisialisasi. |
 
-Pemeriksaan implementasi: 23 pengujian custom, lima skenario handler UI, dan dua pengujian database lolos, lint semua berkas fitur lolos,
+Pemeriksaan implementasi: 24 pengujian custom, enam skenario handler UI, dan dua pengujian database lolos, lint semua berkas fitur lolos,
 build Next.js lolos. Lint global masih melaporkan 18 error di berkas lama:
 empat script migrasi/pemulihan CommonJS, Dashboard, Lab Riset dan Rapat.
 Bagian tersebut belum diubah dalam pekerjaan ini. Pengujian browser PC/HP

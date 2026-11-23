@@ -255,5 +255,31 @@ try {
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM custom_orders WHERE id=?').get(doneId).n, 0);
     assert.equal(db.prepare('SELECT COUNT(*) AS n FROM custom_order_events WHERE order_id=?').get(doneId).n, 0);
   });
+  await check('Hapus massal: campuran pesanan aktif ditolak, semua baris dan aktivitas ikut terhapus', async () => {
+    const make = async ref => {
+      const orderId = await repo.mutateCustomOrder(owner, { ...payload, order_ref: ref, action: 'create' });
+      await repo.mutateCustomOrder(admin, { id: orderId, revision: 1, action: 'read' });
+      await repo.mutateCustomOrder(admin, { id: orderId, revision: 1, action: 'complete', confirmed: true, note: 'Selesai' });
+      return orderId;
+    };
+    const [a, b, c] = [await make('MASS-1'), await make('MASS-2'), await make('MASS-3')];
+    const activeId = await repo.mutateCustomOrder(owner, { ...payload, order_ref: 'MASS-AKTIF', action: 'create' });
+    await assert.rejects(repo.deleteCompletedCustomOrders([a, activeId]), /selesai/);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM custom_orders WHERE id=?').get(a).n, 1);
+    assert.equal(db.prepare('SELECT COUNT(*) AS n FROM custom_orders WHERE id=?').get(activeId).n, 1);
+    session = { ...admin, permissions: ['input'] };
+    assert.equal((await api.POST(new NextRequest('http://test/api/custom-orders', { method: 'POST', body: JSON.stringify({ action: 'delete', ids: [a, b] }) }))).status, 403);
+    session = owner;
+    const response = await api.POST(new NextRequest('http://test/api/custom-orders', { method: 'POST', body: JSON.stringify({ action: 'delete', ids: [a, b] }) }));
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).deleted, 2);
+    assert.equal(await repo.deleteCompletedCustomOrders(c), 1);
+    for (const orderId of [a, b, c]) {
+      assert.equal(db.prepare('SELECT COUNT(*) AS n FROM custom_orders WHERE id=?').get(orderId).n, 0);
+      assert.equal(db.prepare('SELECT COUNT(*) AS n FROM custom_order_events WHERE order_id=?').get(orderId).n, 0);
+    }
+    await assert.rejects(repo.deleteCompletedCustomOrders([]), /Pilih/);
+    await assert.rejects(repo.deleteCompletedCustomOrders(Array.from({ length: 201 }, (_, n) => `x${n}`)), /200/);
+  });
   console.log(`${checks} pengujian lolos; database operasional tidak dibuka.`);
 } finally { db.close(); }
